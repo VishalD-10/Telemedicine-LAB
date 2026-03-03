@@ -13,7 +13,7 @@ interface CaseOption {
   priority?: "emergency" | "routine" | null;
   patient?: {
     generated_patient_id?: string | null;
-  } | null;
+  } [] | null;
   status?: string;
 }
 
@@ -658,7 +658,7 @@ export default function RuralDashboardPage() {
         patient: p
           ? {
               name: (p as { name?: string }).name,
-              generated_patient_id: p.generated_patient_id ?? null,
+              generated_patient_id: p.generated_patient_id !== null && p.generated_patient_id !== undefined ? String(p.generated_patient_id) : null,
               age: (p as { age?: number | null } | undefined)?.age ?? null,
               gender: (p as { gender?: string | null } | undefined)?.gender ?? null,
               height_cm: (p as { height_cm?: number | null } | undefined)?.height_cm ?? null,
@@ -828,7 +828,7 @@ export default function RuralDashboardPage() {
                         <tr key={c.id} className="border-b border-slate-700/50">
                           <td className="px-4 py-2 text-slate-300">{i + 1}</td>
                           <td className="px-4 py-2 text-slate-200">
-                            {c.patient?.generated_patient_id ?? "-"}
+                            {c.patient?.[0]?.generated_patient_id ?? "-"}
                           </td>
                           <td className="px-4 py-2 text-slate-200">
                             {c.priority === "emergency" ? "Emergency" : "Normal"}
