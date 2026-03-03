@@ -58,7 +58,7 @@ export default function PatientDashboardPage() {
     }
     setDownloading(true);
     const response = await fetch(
-      `http://127.0.0.1:8000/download-report/${caseSummary.id}`,
+      `${process.env.NEXT_PUBLIC_BACKEND_URL}/download-report/${caseSummary.id}`,
       {
         method: "GET",
         headers: { "x-patient-id": storedPatientId },
