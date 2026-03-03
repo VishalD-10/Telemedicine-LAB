@@ -24,7 +24,7 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose }: Dico
 
     const loadDicom = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/render-dicom", {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/render-dicom`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ bucket: "x_rays", path: xrayPath }),

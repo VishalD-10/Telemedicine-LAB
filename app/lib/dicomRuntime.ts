@@ -6,7 +6,7 @@ type DicomRenderResponse = {
 };
 
 export async function fetchRenderedDicom(dicomPath: string): Promise<DicomRenderResponse> {
-  const response = await fetch("http://localhost:8001/render", {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/render-dicom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url: dicomPath }),

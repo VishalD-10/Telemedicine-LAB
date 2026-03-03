@@ -441,7 +441,7 @@ export default function RuralDashboardPage() {
   const handleFinalizeCase = async () => {
     if (!waitingCaseId) return;
     setFinalizing(true);
-    const response = await fetch(`http://127.0.0.1:8000/finalize-case/${waitingCaseId}`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/finalize-case/...`, {
       method: "POST",
     });
     setFinalizing(false);

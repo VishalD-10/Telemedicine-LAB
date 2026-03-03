@@ -440,7 +440,7 @@ export default function SpecialistDashboardPage() {
       setFinishing(false);
       return;
     }
-    const finalizeRes = await fetch(`http://127.0.0.1:8000/finalize-case/${reviewData.caseId}`, {
+    const finalizeRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/finalize-case/${reviewData.caseId}`, {
       method: "POST",
     });
     if (!finalizeRes.ok) {
