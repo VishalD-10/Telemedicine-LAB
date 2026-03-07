@@ -17,3 +17,59 @@ textarea {
   @apply outline-none;
 }
 
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float-slow {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 5s ease-in-out infinite;
+}
+
+.animate-float-slower {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+.logout-btn {
+  background: rgba(255, 60, 60, 0.12);
+  color: #ff4b4b;
+  border: 1px solid rgba(255, 60, 60, 0.25);
+  padding: 10px 22px;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  transition: all 0.2s ease;
+}
+
+.logout-btn:hover {
+  background: rgba(255, 60, 60, 0.22);
+}
+
+.new-case-glass .text-slate-100,
+.new-case-glass .text-slate-200,
+.new-case-glass .text-slate-300,
+.new-case-glass .text-slate-400 {
+  color: #334155;
+}

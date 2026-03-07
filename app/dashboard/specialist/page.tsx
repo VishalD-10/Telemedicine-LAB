@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 const DicomViewer = dynamic(() => import("@/app/components/DicomViewer"), { ssr: false });
@@ -11,13 +12,17 @@ interface SpecialistRequestRow {
   case_id: string;
   specialist_id: string;
   rural_message: string | null;
+  rural_doctor_id?: string | null;
   created_at: string;
   accepted_at?: string | null;
   completed_at?: string | null;
   case_priority?: "emergency" | "normal";
   patient_id?: string;
   patient_name?: string | null;
+  ruralDoctorName?: string;
   rural_doctor_name?: string | null;
+  rural_doctor?: { full_name?: string | null } | null;
+  profiles?: { full_name?: string | null } | null;
   generated_patient_id?: string | null;
   specialist_message?: string | null;
 }
@@ -36,6 +41,7 @@ interface CaseReviewData {
 }
 
 export default function SpecialistDashboardPage() {
+  const router = useRouter();
   const [profile, setProfile] = useState<{ full_name: string | null } | null>(null);
   const [activeTab, setActiveTab] = useState<"emergency" | "normal">("emergency");
   const [emergencyPending, setEmergencyPending] = useState<SpecialistRequestRow[]>([]);
@@ -44,6 +50,9 @@ export default function SpecialistDashboardPage() {
   const [pastRequests, setPastRequests] = useState<SpecialistRequestRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [viewState, setViewState] = useState<"list" | "accept" | "review" | "past">("list");
+
+  const [ready, setReady] = useState(false);
+  const [baseDataReady, setBaseDataReady] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<SpecialistRequestRow | null>(null);
   const [acceptMessage, setAcceptMessage] = useState("");
   const [accepting, setAccepting] = useState(false);
@@ -83,6 +92,10 @@ export default function SpecialistDashboardPage() {
   } | null>(null);
 
   useEffect(() => {
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
     const loadProfile = async () => {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) return;
@@ -104,21 +117,21 @@ export default function SpecialistDashboardPage() {
     return () => clearTimeout(timer);
   }, [error]);
 
-  const loadPastCasesForSpecialist = async (specialistId: string) => {
-    const { data: caseRows, error } = await supabase
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
+
+  const loadPastCasesForSpecialist = async () => {
+    if (!userId) return;
+    const { data: pastCases } = await supabase
       .from("cases")
-      .select("id, patient_id, priority, reviewed_at, status")
-      .eq("specialist_id", specialistId)
-      .eq("status", "finalized")
-      .order("reviewed_at", { ascending: false });
-    if (error) {
-      setError(error.message);
-      setPastRequests([]);
-      return;
-    }
+      .select("id, patient_id, priority, status")
+      .eq("specialist_id", userId)
+      .eq("status", "finalized");
     const results = await Promise.all(
-      (caseRows ?? []).map(async (c) => {
-        const patientId = (c as { patient_id?: string }).patient_id ?? "";
+      (pastCases ?? []).map(async (c) => {
+        const patientId = (c as { patient_id?: string | null }).patient_id ?? "";
         const { data: patientRows } = await supabase
           .from("patients")
           .select("name, generated_patient_id, created_by")
@@ -127,22 +140,27 @@ export default function SpecialistDashboardPage() {
         const patientRow = patientRows?.[0] as
           | ({ name?: string | null; created_by?: string | null } & Record<string, string | null>)
           | undefined;
-        const { data: ruralRows } = await supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("id", patientRow?.created_by ?? "")
-          .limit(1);
-        const ruralProfile = ruralRows?.[0] as { full_name?: string | null } | undefined;
+        let ruralDoctorName: string | null = null;
+        if (patientRow?.created_by) {
+          const { data: profileRows } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", patientRow.created_by)
+            .limit(1);
+          ruralDoctorName = (profileRows?.[0] as { full_name?: string | null } | undefined)?.full_name ?? null;
+        }
         return {
           id: (c as { id: string }).id,
           case_id: (c as { id: string }).id,
-          specialist_id: specialistId,
+          specialist_id: userId,
           rural_message: null,
-          created_at: ((c as { reviewed_at?: string | null }).reviewed_at ?? "") as string,
+          created_at: "",
           case_priority: (c as { priority?: string }).priority === "emergency" ? "emergency" : "normal",
           patient_id: patientId || undefined,
           patient_name: patientRow?.name ?? null,
-          rural_doctor_name: ruralProfile?.full_name ?? null,
+          ruralDoctorName: ruralDoctorName ?? "-",
+          rural_doctor_name: ruralDoctorName,
+          rural_doctor: { full_name: ruralDoctorName },
           generated_patient_id:
             (patientRow as { generated_patient_id?: string | null } | undefined)?.generated_patient_id ?? null,
         } as SpecialistRequestRow;
@@ -153,159 +171,157 @@ export default function SpecialistDashboardPage() {
 
   const loadRequests = async (specialistId: string) => {
     setError(null);
-    const { data: reqData, error: reqErr } = await supabase
+    const { data: requests, error } = await supabase
       .from("specialist_requests")
-      .select("id, case_id, rural_message, specialist_message, accepted_at, completed_at, created_at")
+      .select(
+        "id, case_id, rural_message, specialist_message, accepted_at, completed_at, created_at"
+      )
       .eq("specialist_id", specialistId)
       .order("created_at", { ascending: false });
 
-    if (reqErr) {
-      setError(reqErr.message);
+    if (error) {
+      setError(error.message);
       return;
     }
-    const requests = (reqData ?? []) as (SpecialistRequestRow & { case_id: string })[];
-    const caseIds = requests.map((r) => r.case_id);
-    const requestsByCaseId = new Map<string, SpecialistRequestRow & { case_id: string }>();
-    for (const r of requests) {
-      requestsByCaseId.set(r.case_id, r);
+
+    const caseIds = [...new Set((requests ?? []).map((r) => (r as { case_id?: string | null }).case_id).filter(Boolean))] as string[];
+    const { data: caseRows, error: caseErr } = await supabase
+      .from("cases")
+      .select(`
+        id,
+        patient_id,
+        priority,
+        status,
+        rural_doctor_id
+      `)
+      .in("id", caseIds);
+    if (caseErr) {
+      setError(caseErr.message);
+      return;
     }
-    const casesById = new Map<
+
+    const cases = (caseRows ?? []) as {
+      id: string;
+      patient_id?: string | null;
+      priority?: string | null;
+      status?: string | null;
+      rural_doctor_id?: string | null;
+    }[];
+
+    const ruralDoctorIds = [
+      ...new Set(
+        (cases ?? [])
+          .map((c) => c.rural_doctor_id)
+          .filter(Boolean)
+      ),
+    ];
+
+    const { data: doctorRows } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", ruralDoctorIds);
+
+    const doctorMap: Record<string, string> = {};
+
+    (doctorRows ?? []).forEach((d) => {
+      const row = d as { id?: string; full_name?: string | null };
+      if (!row.id) return;
+      doctorMap[row.id] = row.full_name ?? "-";
+    });
+
+    const caseMap: Record<
       string,
-      { priority?: "emergency" | "routine"; patient_id?: string; status?: string }
-    >();
-    let emergencyCaseRows: { id: string; priority?: "emergency" | "routine"; patient_id?: string; status?: string }[] =
-      [];
-    let routineCaseRows: { id: string; priority?: "emergency" | "routine"; patient_id?: string; status?: string }[] = [];
-    if (caseIds.length > 0) {
-      const { data: emergencyCases } = await supabase
-        .from("cases")
-        .select("id, priority, patient_id, status")
-        .in("id", caseIds)
-        .eq("priority", "emergency");
-      const { data: routineCases } = await supabase
-        .from("cases")
-        .select("id, priority, patient_id, status")
-        .in("id", caseIds)
-        .eq("priority", "routine");
-      emergencyCaseRows = (emergencyCases ?? []) as {
-        id: string;
-        priority?: "emergency" | "routine";
-        patient_id?: string;
-        status?: string;
-      }[];
-      routineCaseRows = (routineCases ?? []) as {
-        id: string;
-        priority?: "emergency" | "routine";
-        patient_id?: string;
-        status?: string;
-      }[];
-      for (const c of [...emergencyCaseRows, ...routineCaseRows]) {
-        const row = c as { id: string; priority?: "emergency" | "routine"; patient_id?: string; status?: string };
-        casesById.set(row.id, row);
+      {
+        priority?: string | null;
+        status?: string | null;
+        rural_doctor_id?: string | null;
+        patient_id?: string | null;
       }
-    }
-    const accepted: SpecialistRequestRow[] = [];
-    const buildPendingRows = async (
-      caseRows: { id: string; priority?: "emergency" | "routine"; patient_id?: string }[],
-      priority: "emergency" | "normal"
-    ) => {
-      const rows: SpecialistRequestRow[] = [];
-      for (const c of caseRows) {
-        const request = requestsByCaseId.get(c.id);
-        const isAccepted = Boolean(request?.accepted_at);
-        if (isAccepted) continue;
-        const patientId = c.patient_id;
-        if (!patientId) continue;
+    > = {};
+    cases.forEach((c) => {
+      const row = c as {
+        id: string;
+        patient_id?: string | null;
+        priority?: string | null;
+        status?: string | null;
+        rural_doctor_id?: string | null;
+      };
+      caseMap[row.id] = row;
+    });
+
+    const buildRows = async (rows: unknown[]) => {
+      const mapped: SpecialistRequestRow[] = [];
+      for (const r of rows) {
+        const caseId = (r as { case_id?: string | null }).case_id ?? "";
+        const caseData = caseMap[caseId];
+        if (!caseData || caseData.status === "finalized") continue;
+        const patientId = caseData.patient_id ?? "";
         const { data: patientRows } = await supabase
           .from("patients")
-          .select("name, created_by, generated_patient_id")
+          .select("name, generated_patient_id")
           .eq("id", patientId)
           .limit(1);
-        const patientRow = patientRows?.[0] as { name?: string | null; created_by?: string } | undefined;
-        const createdBy = patientRow?.created_by;
-        let ruralDoctorName: string | null = null;
-        if (createdBy) {
-          const { data: profRows } = await supabase
-            .from("profiles")
-            .select("full_name")
-            .eq("id", createdBy)
-            .limit(1);
-          const prof = profRows?.[0] as { full_name: string | null } | undefined;
-          ruralDoctorName = prof?.full_name ?? null;
-        }
-        rows.push({
-          id: request?.id ?? c.id,
-          case_id: c.id,
-          specialist_id: request?.specialist_id ?? specialistId,
-          rural_message: request?.rural_message ?? null,
-          created_at: request?.created_at ?? "",
-          accepted_at: request?.accepted_at ?? null,
-          completed_at: request?.completed_at ?? null,
-          specialist_message: request?.specialist_message ?? null,
-          case_priority: priority,
+        const patientRow = patientRows?.[0];
+        const ruralDoctorName =
+          doctorMap[caseData.rural_doctor_id ?? ""] ?? "-";
+        if (!patientId) continue;
+        mapped.push({
+          id: (r as { id: string }).id,
+          case_id: (r as { case_id: string }).case_id,
+          specialist_id: specialistId,
+          rural_message: (r as { rural_message?: string | null }).rural_message ?? null,
+          created_at: (r as { created_at?: string | null }).created_at ?? "",
+          accepted_at: (r as { accepted_at?: string | null }).accepted_at ?? null,
+          completed_at: (r as { completed_at?: string | null }).completed_at ?? null,
+          specialist_message: (r as { specialist_message?: string | null }).specialist_message ?? null,
+          case_priority: caseData.priority === "emergency" ? "emergency" : "normal",
           patient_id: patientId,
           patient_name: patientRow?.name ?? null,
+          ruralDoctorName,
           rural_doctor_name: ruralDoctorName,
           generated_patient_id:
-            (patientRow as { generated_patient_id?: string | null } | undefined)?.generated_patient_id ?? null,
+            patientRow?.generated_patient_id ?? null,
         });
       }
-      return rows;
+      return mapped;
     };
-    const [emergencyPendingRows, normalPendingRows] = await Promise.all([
-      buildPendingRows(emergencyCaseRows, "emergency"),
-      buildPendingRows(routineCaseRows, "normal"),
-    ]);
-    for (const r of requests) {
-      const caseRow = casesById.get(r.case_id);
-      if (!caseRow) continue;
-      const patientId = caseRow.patient_id;
-      if (!patientId) continue;
-      const { data: patientRows } = await supabase
-        .from("patients")
-        .select("name, created_by, generated_patient_id")
-        .eq("id", patientId)
-        .limit(1);
-      const patientRow = patientRows?.[0] as { name?: string | null; created_by?: string } | undefined;
-      const createdBy = patientRow?.created_by;
-      let ruralDoctorName: string | null = null;
-      if (createdBy) {
-        const { data: profRows } = await supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("id", createdBy)
-          .limit(1);
-        const prof = profRows?.[0] as { full_name: string | null } | undefined;
-        ruralDoctorName = prof?.full_name ?? null;
+
+    const allRows = await buildRows((requests ?? []) as unknown[]);
+    const acceptedRows: SpecialistRequestRow[] = [];
+
+    for (const r of allRows) {
+      const isAccepted = Boolean(r.accepted_at);
+      const isCompleted = Boolean(r.completed_at);
+
+      if (isAccepted && !isCompleted) {
+        acceptedRows.push(r);
       }
-      const row: SpecialistRequestRow = {
-        ...r,
-        case_priority: caseRow.priority === "emergency" ? "emergency" : "normal",
-        patient_id: patientId,
-        patient_name: patientRow?.name ?? null,
-        rural_doctor_name: ruralDoctorName,
-        generated_patient_id: (patientRow as { generated_patient_id?: string | null } | undefined)?.generated_patient_id ?? null,
-      };
-      const isCompleted = Boolean((r as { completed_at?: string | null }).completed_at);
-      const isAccepted = Boolean((r as { accepted_at?: string | null }).accepted_at);
-      if (isAccepted && !isCompleted) accepted.push(row);
     }
+
+    const pendingRows = allRows.filter((r) => !r.accepted_at && !r.completed_at);
+    const emergencyPendingRows = pendingRows.filter((r) => r.case_priority === "emergency");
+    const normalPendingRows = pendingRows.filter((r) => r.case_priority !== "emergency");
+
     setEmergencyPending(emergencyPendingRows);
     setNormalPending(normalPendingRows);
-    setAcceptedRequests(accepted);
+    setAcceptedRequests(acceptedRows);
   };
 
   useEffect(() => {
-    if (userId) {
-      loadRequests(userId);
-    }
+    if (!userId) return;
+    let active = true;
+    const loadBase = async () => {
+      setBaseDataReady(false);
+      await loadRequests(userId);
+      await loadPastCasesForSpecialist();
+      if (active) setBaseDataReady(true);
+    };
+    loadBase();
+    return () => {
+      active = false;
+    };
   }, [userId]);
 
-  useEffect(() => {
-    if (userId) {
-      loadPastCasesForSpecialist(userId);
-    }
-  }, [userId]);
 
   const activeList = activeTab === "emergency" ? emergencyPending : normalPending;
 
@@ -316,43 +332,45 @@ export default function SpecialistDashboardPage() {
   };
 
   const handleOpenReview = (req: SpecialistRequestRow) => {
+    setViewState("review");
     if (req.case_id && req.patient_id)
       loadReviewData(req.case_id, req.id, req.patient_id, () => setViewState("review"));
   };
 
+  const selectedRequestId = selectedRequest?.id ?? null;
+
   const handleAcceptRequest = async (e: FormEvent) => {
     e.preventDefault();
-    if (!selectedRequest) return;
-    setAccepting(true);
-    const { error: err } = await supabase
+    if (!selectedRequestId || !selectedRequest?.case_id) return;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
       .from("specialist_requests")
       .update({
         accepted_at: new Date().toISOString(),
-        specialist_message: acceptMessage.trim() || null,
+        specialist_message: acceptMessage || null,
       })
       .eq("id", selectedRequest.id);
-    setAccepting(false);
-    if (err) {
-      setError(err.message);
+
+    if (error) {
+      console.error("Accept request failed:", error);
       return;
     }
-    const { error: caseErr } = await supabase
-      .from("cases")
-      .update({ specialist_id: selectedRequest.specialist_id })
-      .eq("id", selectedRequest.case_id);
-    if (caseErr) {
-      setError(caseErr.message);
+
+    await loadRequests(user.id);
+
+    if (selectedRequest?.case_id && selectedRequest?.patient_id) {
+      await loadReviewData(
+        selectedRequest.case_id,
+        selectedRequest.id,
+        selectedRequest.patient_id
+      );
+
+      setViewState("review");
       return;
-    }
-    setSelectedRequest(null);
-    setViewState("list");
-    if (userId) {
-      loadRequests(userId);
-    }
-    if (selectedRequest.case_id && selectedRequest.patient_id) {
-      loadReviewData(selectedRequest.case_id, selectedRequest.id, selectedRequest.patient_id, () => {
-        setViewState("review");
-      });
     }
   };
 
@@ -364,10 +382,18 @@ export default function SpecialistDashboardPage() {
   ) => {
     const { data: caseRows } = await supabase
       .from("cases")
-      .select("rural_diagnosis_report")
+      .select("id, patient_id, rural_diagnosis_report, specialist_diagnosis_report, status")
       .eq("id", caseId)
       .limit(1);
-    const caseRow = caseRows?.[0] as { rural_diagnosis_report?: string | null } | undefined;
+    const caseRow = caseRows?.[0] as
+      | {
+          id?: string;
+          patient_id?: string;
+          rural_diagnosis_report?: string | null;
+          specialist_diagnosis_report?: string | null;
+          status?: string | null;
+        }
+      | undefined;
     const { data: patientRows } = await supabase
       .from("patients")
       .select("name, age, gender, height_cm, weight_kg, smoking_history, generated_patient_id")
@@ -442,6 +468,7 @@ export default function SpecialistDashboardPage() {
     }
     const finalizeRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/finalize-case/${reviewData.caseId}`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
     });
     if (!finalizeRes.ok) {
       setError("Failed to finalize case.");
@@ -476,7 +503,7 @@ export default function SpecialistDashboardPage() {
     setShowXrayModal(true);
   };
 
-  const handleViewPastDetails = (req: SpecialistRequestRow) => {
+  function handleViewPastDetails(req: SpecialistRequestRow) {
     setViewingPastCaseId(req.case_id);
     const load = async () => {
       const { data: caseRows } = await supabase
@@ -487,9 +514,9 @@ export default function SpecialistDashboardPage() {
         .eq("id", req.case_id)
         .limit(1);
       const caseRow = caseRows?.[0] as
-        | (Record<string, unknown> & { patients?: Record<string, unknown> | Record<string, unknown>[] })
+        | (Record<string, unknown> & { patients?: Record<string, unknown> | null })
         | undefined;
-      const patientRow = Array.isArray(caseRow?.patients) ? caseRow?.patients?.[0] : caseRow?.patients;
+      const patientRow = caseRow?.patients ?? null;
       const { data: v } = await supabase
         .from("vitals")
         .select("*")
@@ -530,29 +557,46 @@ export default function SpecialistDashboardPage() {
       });
     };
     load();
-  };
+  }
+
+  if (!ready) {
+    return (
+      <div className="p-6 text-slate-400">
+        Loading dashboard...
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-50">
+    <div className="flex h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-blue-100">
+      <div className="flex-1 overflow-y-auto p-8 space-y-6">
+      <div className="flex items-start justify-between">
+        <div>
+        <h1 className="text-2xl font-semibold text-slate-800">
           Welcome back Dr. {profile?.full_name ?? "Specialist"}
         </h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-slate-600">
           Active requests and case review. Review patient data and submit your diagnosis.
         </p>
         {profile && (
-          <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900/50 px-4 py-2 text-sm text-slate-300">
-            <span className="font-medium text-slate-200">Doctor:</span> {profile.full_name ?? "-"}
+          <div className="mt-2 rounded-lg border border-white/40 bg-white/70 px-4 py-2 text-sm text-slate-700 backdrop-blur-xl">
+            <span className="font-medium text-slate-800">Doctor:</span> {profile.full_name ?? "-"}
           </div>
         )}
+        </div>
+      <button
+        onClick={handleLogout}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+      >
+        Logout
+      </button>
       </div>
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
       {viewState === "list" && !viewingPastCaseId && (
         <>
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <h2 className="text-sm font-semibold text-slate-100">ACTIVE REQUESTS</h2>
+          <section className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
+            <h2 className="text-sm font-semibold text-slate-700">ACTIVE REQUESTS</h2>
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
@@ -560,7 +604,7 @@ export default function SpecialistDashboardPage() {
                 className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === "emergency"
                     ? "bg-red-600 text-white"
-                    : "border border-slate-600 text-slate-400 hover:bg-slate-800"
+                    : "border border-gray-300 bg-white/70 text-gray-700 hover:bg-blue-50"
                 }`}
               >
                 Emergency {emergencyPending.length > 0 && `(${emergencyPending.length})`}
@@ -571,42 +615,42 @@ export default function SpecialistDashboardPage() {
                 className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === "normal"
                     ? "bg-blue-600 text-white"
-                    : "border border-slate-600 text-slate-400 hover:bg-slate-800"
+                    : "border border-gray-300 bg-white/70 text-gray-700 hover:bg-blue-50"
                 }`}
               >
                 Normal {normalPending.length > 0 && `(${normalPending.length})`}
               </button>
             </div>
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-700 text-left text-slate-400">
-                    <th className="px-3 py-2">Patient Name</th>
-                    <th className="px-3 py-2">Emergency Note</th>
-                    <th className="px-3 py-2">Rural Doctor Name</th>
-                    <th className="px-3 py-2">VIEW</th>
+                  <tr className="bg-blue-600 text-white text-sm text-left">
+                    <th className="px-4 py-3">Patient Name</th>
+                    <th className="px-4 py-3">Emergency Note</th>
+                    <th className="px-4 py-3">Rural Doctor Name</th>
+                    <th className="px-4 py-3">VIEW</th>
                   </tr>
                 </thead>
                 <tbody>
                   {activeList.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-3 py-4 text-slate-500">
+                      <td colSpan={4} className="px-4 py-3 text-gray-700">
                         No {activeTab === "emergency" ? "emergency" : "normal"} requests at the moment.
                       </td>
                     </tr>
                   ) : (
                     activeList.map((r) => (
-                      <tr key={r.id} className="border-b border-slate-700/50">
-                        <td className="px-3 py-2 text-slate-200">{r.patient_name ?? "-"}</td>
-                        <td className="px-3 py-2 text-slate-300">{r.rural_message ?? "-"}</td>
-                        <td className="px-3 py-2 text-slate-300">{r.rural_doctor_name ?? "-"}</td>
-                        <td className="px-3 py-2">
+                      <tr key={r.id} className="hover:bg-blue-50 transition border-b border-blue-100">
+                        <td className="px-4 py-3 text-gray-700">{r.patient_name ?? "-"}</td>
+                        <td className="px-4 py-3 text-gray-700">{r.rural_message ?? "-"}</td>
+                        <td className="px-4 py-3 text-gray-700">{r.ruralDoctorName}</td>
+                        <td className="px-4 py-3 text-gray-700">
                           <button
                             type="button"
                             onClick={() => handleViewAccept(r)}
-                            className="text-primary hover:underline"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
                           >
-                            VIEW
+                            View
                           </button>
                         </td>
                       </tr>
@@ -617,18 +661,19 @@ export default function SpecialistDashboardPage() {
             </div>
             {acceptedRequests.length > 0 && (
               <div className="mt-4">
-                <h3 className="text-xs font-medium text-slate-400">In progress (accepted, not yet completed)</h3>
+                <h3 className="text-xs font-medium text-slate-600">In progress (accepted, not yet completed)</h3>
                 <div className="mt-2 space-y-2">
                   {acceptedRequests.map((r) => (
                     <div
                       key={r.id}
-                      className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-950/50 px-3 py-2 text-sm"
+                      className="flex items-center justify-between rounded-lg border border-white/30 bg-white/70 px-3 py-2 text-sm backdrop-blur-lg"
                     >
-                      <span className="text-slate-200">{r.patient_name ?? "-"}</span>
+                      <span className="text-gray-700">{r.patient_name ?? "-"}</span>
+                      <span className="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700">Accepted</span>
                       <button
                         type="button"
                         onClick={() => handleOpenReview(r)}
-                        className="text-primary hover:underline"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
                       >
                         Review
                       </button>
@@ -639,34 +684,36 @@ export default function SpecialistDashboardPage() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <h2 className="text-sm font-semibold text-slate-100">PAST CASES</h2>
+          <section className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
+            <h2 className="text-sm font-semibold text-slate-700">PAST CASES</h2>
             <div className="mt-4">
-              <div className="overflow-y-auto overflow-x-hidden" style={{ maxHeight: 400 }}>
+              <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 overflow-y-auto overflow-x-hidden" style={{ maxHeight: 400 }}>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-700 text-left text-slate-400">
-                      <th className="px-3 py-2">Index</th>
-                      <th className="px-3 py-2">Patient ID</th>
-                      <th className="px-3 py-2">Emergency / Normal</th>
-                      <th className="px-3 py-2">Rural Doctor Name</th>
-                      <th className="px-3 py-2">View Details</th>
+                    <tr className="bg-blue-600 text-white text-sm text-left">
+                      <th className="px-4 py-3">Index</th>
+                      <th className="px-4 py-3">Patient ID</th>
+                      <th className="px-4 py-3">Emergency / Normal</th>
+                      <th className="px-4 py-3">Rural Doctor Name</th>
+                      <th className="px-4 py-3">View Details</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pastRequests.map((r, i) => (
-                      <tr key={r.id} className="border-b border-slate-700/50">
-                        <td className="px-3 py-2 text-slate-300">{i + 1}</td>
-                        <td className="px-3 py-2 text-slate-200">{r.generated_patient_id ?? "-"}</td>
-                        <td className="px-3 py-2 text-slate-200">
-                          {r.case_priority === "emergency" ? "Emergency" : "Normal"}
+                      <tr key={r.id} className="hover:bg-blue-50 transition border-b border-blue-100">
+                        <td className="px-4 py-3 text-gray-700">{i + 1}</td>
+                        <td className="px-4 py-3 text-gray-700">{r.generated_patient_id ?? "-"}</td>
+                        <td className="px-4 py-3 text-gray-700">
+                          <span className={r.case_priority === "emergency" ? "px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700" : "px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"}>
+                            {r.case_priority === "emergency" ? "Emergency" : "Completed"}
+                          </span>
                         </td>
-                        <td className="px-3 py-2 text-slate-300">{r.rural_doctor_name ?? "-"}</td>
-                        <td className="px-3 py-2">
+                        <td className="px-4 py-3 text-gray-700">{r.ruralDoctorName}</td>
+                        <td className="px-4 py-3 text-gray-700">
                           <button
                             type="button"
                             onClick={() => handleViewPastDetails(r)}
-                            className="text-primary hover:underline"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
                           >
                             View Details
                           </button>
@@ -681,18 +728,19 @@ export default function SpecialistDashboardPage() {
         </>
       )}
 
-      {viewState === "accept" && selectedRequest && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
-          <h2 className="text-lg font-semibold text-slate-100">Accept Request</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Patient: {selectedRequest.patient_name ?? "-"} · {selectedRequest.case_priority === "emergency" ? "Emergency" : "Normal"}
+      {viewState === "accept" ? (
+        selectedRequest ? (
+          <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
+          <h2 className="text-lg font-semibold text-slate-800">Accept Request</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Patient: {selectedRequest.patient_name ?? "-"} Â· {selectedRequest.case_priority === "emergency" ? "Emergency" : "Normal"}
           </p>
           <form onSubmit={handleAcceptRequest} className="mt-4 space-y-4">
             <div>
-              <label className="block text-sm text-slate-400">Message (optional)</label>
+              <label className="block text-sm text-slate-600">Message (optional)</label>
               <textarea
                 rows={3}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                className="w-full rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 p-4 text-sm"
                 value={acceptMessage}
                 onChange={(e) => setAcceptMessage(e.target.value)}
                 placeholder="Message for the rural doctor"
@@ -705,84 +753,90 @@ export default function SpecialistDashboardPage() {
                   setSelectedRequest(null);
                   setViewState("list");
                 }}
-                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={accepting}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-blue-600 disabled:opacity-50"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow disabled:opacity-50"
               >
-                {accepting ? "Accepting…" : "Accept Request"}
+                {accepting ? "Acceptingâ€¦" : "Accept Request"}
               </button>
             </div>
           </form>
-        </div>
-      )}
+          </div>
+        ) : (
+          <div className="p-6 text-slate-400">Loading request...</div>
+        )
+      ) : null}
 
-      {viewState === "review" && reviewData && (
-        <div className="space-y-4">
+      {viewState === "review" ? (
+        reviewData ? (
+          <div className="space-y-4">
           <button
             type="button"
             onClick={() => {
               setReviewData(null);
               setViewState("list");
             }}
-            className="text-sm text-slate-400 hover:text-slate-200"
+            className="text-sm text-slate-600 hover:text-slate-800"
           >
             Back to requests
           </button>
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
-            <div className="border-b border-slate-700 pb-3">
-              <h2 className="text-lg font-semibold text-slate-100">
+          <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
+            <div className="border-b border-blue-100 pb-3">
+              <h2 className="text-lg font-semibold text-slate-800">
                 {reviewData.patientName ?? "Patient"} ({reviewData.generatedPatientId ?? "-"})
               </h2>
-              <div className="mt-2 text-sm text-slate-300">
-                Age: {reviewData.patientMeta.age ?? "-"} | Gender: {reviewData.patientMeta.gender ?? "-"} | Height:{" "}
-                {reviewData.patientMeta.height_cm ?? "-"} | Weight: {reviewData.patientMeta.weight_kg ?? "-"}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-3">
+                <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">Age: {reviewData.patientMeta.age ?? "-"}</div>
+                <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">Gender: {reviewData.patientMeta.gender ?? "-"}</div>
+                <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">Height: {reviewData.patientMeta.height_cm ?? "-"}</div>
+                <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">Weight: {reviewData.patientMeta.weight_kg ?? "-"}</div>
               </div>
             </div>
 
             <div className="mt-4">
-              <h3 className="text-sm font-medium text-slate-300">Patient History</h3>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">
+              <h3 className="text-sm font-medium text-slate-700">Patient History</h3>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
                 {reviewData.patientHistory ?? "-"}
               </p>
             </div>
 
             <div className="mt-4">
-              <h3 className="text-sm font-medium text-slate-300">Vitals & Spirometry</h3>
-              <div className="mt-2 space-y-2 text-sm text-slate-200">
+              <h3 className="text-sm font-medium text-slate-700">Vitals & Spirometry</h3>
+              <div className="mt-2 space-y-2 text-sm text-slate-700">
                 {reviewData.vitals.length === 0 && reviewData.spirometry.length === 0 && <div>-</div>}
                 {reviewData.vitals.map((v, i) => (
                   <div key={`vital-${i}`}>
-                    SpO₂: {v.spo2 == null ? "—" : `${v.spo2}%`} | RR: {v.respiratory_rate == null ? "—" : `${v.respiratory_rate} breaths/min`}
+                    SpOâ‚‚: {v.spo2 == null ? "â€”" : `${v.spo2}%`} | RR: {v.respiratory_rate == null ? "â€”" : `${v.respiratory_rate} breaths/min`}
                   </div>
                 ))}
                 {reviewData.spirometry.map((s, i) => (
                   <div key={`spiro-${i}`}>
-                    FVC: {s.fvc == null ? "—" : `${s.fvc} L`} | FEV₁: {s.fev1 == null ? "—" : `${s.fev1} L`} | FEV₁/FVC: {s.fev1_fvc == null ? "—" : `${s.fev1_fvc}%`} | FEV₁/FEV₆:{" "}
-                    {s.fev1_fev6 == null ? "—" : `${s.fev1_fev6}%`} | PEF: {s.pef == null ? "—" : `${s.pef} L/min`}
+                    FVC: {s.fvc == null ? "â€”" : `${s.fvc} L`} | FEVâ‚: {s.fev1 == null ? "â€”" : `${s.fev1} L`} | FEVâ‚/FVC: {s.fev1_fvc == null ? "â€”" : `${s.fev1_fvc}%`} | FEVâ‚/FEVâ‚†:{" "}
+                    {s.fev1_fev6 == null ? "â€”" : `${s.fev1_fev6}%`} | PEF: {s.pef == null ? "â€”" : `${s.pef} L/min`}
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="mt-4">
-              <h3 className="text-sm font-medium text-slate-300">X-Ray</h3>
+              <h3 className="text-sm font-medium text-slate-700">X-Ray</h3>
               <button
                 type="button"
                 onClick={() => reviewData.xrayPaths[0] && openXrayModal(reviewData.xrayPaths[0])}
-                className="mt-2 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
+                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
               >
                 VIEW X-RAY
               </button>
             </div>
 
-            <div className="mt-6">
-              <h3 className="text-sm font-medium text-slate-300">Specialist Diagnosis</h3>
-              <label className="mt-2 flex items-center gap-2 text-sm text-slate-300">
+            <div className="mt-6 bg-white/80 backdrop-blur-xl border border-white/40 rounded-xl shadow p-5">
+              <h3 className="text-sm font-medium text-slate-700">Specialist Diagnosis</h3>
+              <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
                 <input
                   type="checkbox"
                   checked={furtherDiagnosisRequired}
@@ -792,7 +846,7 @@ export default function SpecialistDashboardPage() {
                 Further diagnosis required
               </label>
               {furtherDiagnosisRequired && (
-                <div className="mt-2 space-y-2 text-sm text-slate-300">
+                <div className="mt-2 space-y-2 text-sm text-slate-700">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -817,26 +871,35 @@ export default function SpecialistDashboardPage() {
                   </label>
                 </div>
               )}
-              <label className="mt-2 block text-sm text-slate-400">Specialist Diagnosis Report</label>
+              <label className="mt-2 block text-sm text-slate-600">Specialist Diagnosis Report</label>
               <textarea
                 rows={5}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+                className="w-full rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 p-4 text-sm"
                 value={specialistDiagnosisReport}
                 onChange={(e) => setSpecialistDiagnosisReport(e.target.value)}
-                placeholder="Your diagnosis and recommendations…"
+                placeholder="Your diagnosis and recommendationsâ€¦"
               />
               <button
                 type="button"
                 onClick={handleFinishCase}
                 disabled={finishing}
-                className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-blue-600 disabled:opacity-50"
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 shadow disabled:opacity-50 mt-4"
               >
-                {finishing ? "Saving…" : "Finish"}
+                {finishing ? "Savingâ€¦" : "Finish"}
               </button>
             </div>
           </div>
+          </div>
+        ) : (
+          <div className="p-6 text-slate-400">Loading request...</div>
+        )
+      ) : null}
+
+      {viewState === "past" && viewingPastCaseId && !pastCaseDetail ? (
+        <div className="p-6 text-slate-400">
+          Loading case details...
         </div>
-      )}
+      ) : null}
 
       {viewingPastCaseId && !pastCaseDetail && (
         <div className="text-slate-400 p-6">
@@ -851,60 +914,61 @@ export default function SpecialistDashboardPage() {
             onClick={() => {
               setViewingPastCaseId(null);
               setPastCaseDetail(null);
+              setViewState("list");
             }}
-            className="text-sm text-slate-400 hover:text-slate-200"
+            className="text-sm text-slate-600 hover:text-slate-800"
           >
             Back to Past Cases
           </button>
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <h2 className="text-lg font-semibold text-slate-100">{pastCaseDetail?.patientName ?? "Patient"}</h2>
-            <p className="text-sm text-slate-400">Patient ID: {pastCaseDetail?.generatedPatientId ?? "-"}</p>
+          <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
+            <h2 className="text-lg font-semibold text-slate-800">{pastCaseDetail?.patientName ?? "Patient"}</h2>
+            <p className="text-sm text-slate-600">Patient ID: {pastCaseDetail?.generatedPatientId ?? "-"}</p>
             <div className="mt-4 grid gap-4 text-sm">
-              <div className="rounded-lg border border-slate-700 p-3">
-                <h3 className="text-sm font-medium text-slate-300">Patient Information</h3>
-                <div className="mt-2 grid gap-1 text-slate-200">
+              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+                <h3 className="text-sm font-medium text-slate-700">Patient Information</h3>
+                <div className="mt-2 grid gap-1 text-slate-700">
                   <div>Name: {pastCaseDetail.patientName ?? "-"}</div>
                   <div>Patient ID: {pastCaseDetail.generatedPatientId ?? "-"}</div>
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-700 p-3">
-                <h3 className="text-sm font-medium text-slate-300">Clinical History</h3>
-                <p className="mt-2 whitespace-pre-wrap text-slate-200">{pastCaseDetail.patientHistory ?? "-"}</p>
+              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+                <h3 className="text-sm font-medium text-slate-700">Clinical History</h3>
+                <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.patientHistory ?? "-"}</p>
               </div>
-              <div className="rounded-lg border border-slate-700 p-3">
-                <h3 className="text-sm font-medium text-slate-300">Vitals</h3>
-                <div className="mt-2 grid gap-1 text-slate-200">
-                  <div>SpO₂: {pastCaseDetail.vitals?.spo2 == null ? "—" : `${pastCaseDetail.vitals.spo2}%`}</div>
+              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+                <h3 className="text-sm font-medium text-slate-700">Vitals</h3>
+                <div className="mt-2 grid gap-1 text-slate-700">
+                  <div>SpOâ‚‚: {pastCaseDetail.vitals?.spo2 == null ? "â€”" : `${pastCaseDetail.vitals.spo2}%`}</div>
                   <div>
                     Respiratory Rate:{" "}
                     {pastCaseDetail.vitals?.respiratory_rate == null
-                      ? "—"
+                      ? "â€”"
                       : `${pastCaseDetail.vitals.respiratory_rate} breaths/min`}
                   </div>
-                  <div>FVC: {pastCaseDetail.spirometry?.fvc == null ? "—" : `${pastCaseDetail.spirometry.fvc} L`}</div>
-                  <div>FEV₁: {pastCaseDetail.spirometry?.fev1 == null ? "—" : `${pastCaseDetail.spirometry.fev1} L`}</div>
+                  <div>FVC: {pastCaseDetail.spirometry?.fvc == null ? "â€”" : `${pastCaseDetail.spirometry.fvc} L`}</div>
+                  <div>FEVâ‚: {pastCaseDetail.spirometry?.fev1 == null ? "â€”" : `${pastCaseDetail.spirometry.fev1} L`}</div>
                   <div>
-                    FEV₁ / FVC:{" "}
-                    {pastCaseDetail.spirometry?.fev1_fvc == null ? "—" : `${pastCaseDetail.spirometry.fev1_fvc}%`}
+                    FEVâ‚ / FVC:{" "}
+                    {pastCaseDetail.spirometry?.fev1_fvc == null ? "â€”" : `${pastCaseDetail.spirometry.fev1_fvc}%`}
                   </div>
                   <div>
-                    FEV₁ / FEV₆:{" "}
-                    {pastCaseDetail.spirometry?.fev1_fev6 == null ? "—" : `${pastCaseDetail.spirometry.fev1_fev6}%`}
+                    FEVâ‚ / FEVâ‚†:{" "}
+                    {pastCaseDetail.spirometry?.fev1_fev6 == null ? "â€”" : `${pastCaseDetail.spirometry.fev1_fev6}%`}
                   </div>
-                  <div>PEF: {pastCaseDetail.spirometry?.pef == null ? "—" : `${pastCaseDetail.spirometry.pef} L/min`}</div>
+                  <div>PEF: {pastCaseDetail.spirometry?.pef == null ? "â€”" : `${pastCaseDetail.spirometry.pef} L/min`}</div>
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-700 p-3">
-                <h3 className="text-sm font-medium text-slate-300">Rural Diagnosis</h3>
-                <p className="mt-2 whitespace-pre-wrap text-slate-200">{pastCaseDetail.ruralDiagnosis ?? "-"}</p>
+              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+                <h3 className="text-sm font-medium text-slate-700">Rural Diagnosis</h3>
+                <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.ruralDiagnosis ?? "-"}</p>
               </div>
-              <div className="rounded-lg border border-slate-700 p-3">
-                <h3 className="text-sm font-medium text-slate-300">Specialist Diagnosis</h3>
-                <p className="mt-2 whitespace-pre-wrap text-slate-200">{pastCaseDetail.specialistDiagnosis ?? "-"}</p>
+              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+                <h3 className="text-sm font-medium text-slate-700">Specialist Diagnosis</h3>
+                <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.specialistDiagnosis ?? "-"}</p>
               </div>
-              <div className="rounded-lg border border-slate-700 p-3">
-                <h3 className="text-sm font-medium text-slate-300">Recommended Further Investigations</h3>
-                <div className="mt-2 space-y-2 text-slate-200">
+              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+                <h3 className="text-sm font-medium text-slate-700">Recommended Further Investigations</h3>
+                <div className="mt-2 space-y-2 text-slate-700">
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={Boolean(pastCaseDetail.ctScanRequired)} readOnly />
                     CT Scan
@@ -915,17 +979,17 @@ export default function SpecialistDashboardPage() {
                   </label>
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-700 p-3">
-                <h3 className="text-sm font-medium text-slate-300">Follow-up Notes</h3>
-                <p className="mt-2 whitespace-pre-wrap text-slate-200">{pastCaseDetail.followUps ?? "-"}</p>
+              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+                <h3 className="text-sm font-medium text-slate-700">Follow-up Notes</h3>
+                <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.followUps ?? "-"}</p>
               </div>
-              <div className="rounded-lg border border-slate-700 p-3">
-                <h3 className="text-sm font-medium text-slate-300">X-ray Image</h3>
+              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+                <h3 className="text-sm font-medium text-slate-700">X-ray Image</h3>
                 {pastCaseDetail.xrayPaths?.length > 0 ? (
                   <button
                     type="button"
                     onClick={() => openXrayModal(pastCaseDetail.xrayPaths[0])}
-                    className="mt-2 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
+                    className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
                   >
                     View X-ray
                   </button>
@@ -948,13 +1012,9 @@ export default function SpecialistDashboardPage() {
           setXrayPath(null);
         }}
       />
+      </div>
     </div>
   );
 }
-
-
-
-
-
 
 

@@ -6,7 +6,9 @@ load_dotenv(Path(__file__).parent / ".env")
 
 import base64
 import os
+import threading
 from datetime import datetime, timezone
+from functools import lru_cache
 from io import BytesIO
 from typing import Any, Dict
 
@@ -85,6 +87,7 @@ def _normalize_to_uint8(pixel_array: np.ndarray, ds: pydicom.Dataset) -> np.ndar
     return scaled
 
 
+@lru_cache(maxsize=100)
 def _dicom_to_png_bytes(bucket: str, path: str) -> bytes | None:
     dicom_bytes = supabase.storage.from_(bucket).download(path)
     if not dicom_bytes or len(dicom_bytes) <= 1024:
@@ -264,6 +267,23 @@ def render_dicom(payload: RenderDicomRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/render-dicom-preview")
+def render_dicom_preview(payload: RenderDicomRequest) -> Dict[str, Any]:
+    try:
+        bucket = payload.bucket.strip()
+        path = payload.path.strip().lstrip("/")
+        if path.startswith("http"):
+            raise HTTPException(status_code=400, detail="Invalid DICOM path")
+        png_bytes = _dicom_to_png_bytes(bucket, path)
+        if not png_bytes:
+            raise ValueError("Invalid DICOM content")
+        image_base64 = base64.b64encode(png_bytes).decode("ascii")
+        return {"image_base64": image_base64}
+    except Exception as exc:
+        print("DICOM PREVIEW FAILED:", repr(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/generate-report-pdf")
 def generate_report_pdf(payload: GenerateReportRequest) -> Dict[str, str]:
     case_id = (payload.case_id or "").strip()
@@ -273,198 +293,52 @@ def generate_report_pdf(payload: GenerateReportRequest) -> Dict[str, str]:
     reviewed_at = datetime.now(timezone.utc).isoformat()
     supabase.from_("cases").update({"status": "finalized", "reviewed_at": reviewed_at}).eq("id", case_id).execute()
 
-    case_row = _fetch_single(
-        "cases",
-        "id, patient_id, rural_doctor_id, specialist_id, rural_diagnosis_report, specialist_diagnosis_report, follow_up_notes, ct_scan_required, bronchoscopy_required, created_at, status",
-        "id",
-        case_id,
-    )
-    if not case_row:
-        raise HTTPException(status_code=404, detail="Case not found")
-    if case_row.get("status") != "finalized":
-        raise HTTPException(status_code=400, detail="Case is not finalized")
-
-    patient_id = case_row.get("patient_id")
-    patient_row = _fetch_single(
-        "patients",
-        "name, generated_patient_id, age, gender, height_cm, weight_kg, smoking_history, phone_number",
-        "id",
-        patient_id,
-    )
-    rural_doctor = _fetch_single(
-        "profiles",
-        "full_name",
-        "id",
-        case_row.get("rural_doctor_id"),
-    )
-    specialist = _fetch_single(
-        "profiles",
-        "full_name",
-        "id",
-        case_row.get("specialist_id"),
-    )
-    vitals_row = (
-        supabase.from_("vitals")
-        .select("spo2, respiratory_rate, created_at")
-        .eq("patient_id", patient_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    ).data
-    vitals = (vitals_row or [None])[0] if vitals_row is not None else None
-
-    xray_row = (
-        supabase.from_("xrays")
-        .select("file_path, created_at")
-        .eq("patient_id", patient_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    ).data
-    xray_path = (xray_row or [None])[0].get("file_path") if xray_row else None
-    xray_png = _dicom_to_png_bytes("x_rays", xray_path) if xray_path else None
-
-    styles = getSampleStyleSheet()
-    title_style = styles["Title"]
-    heading = styles["Heading2"]
-    body = styles["BodyText"]
-    body.leading = 14
-
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=0.75 * inch,
-        rightMargin=0.75 * inch,
-        topMargin=0.75 * inch,
-        bottomMargin=0.75 * inch,
-    )
-
-    story = []
-    story.append(Paragraph("TELE-PULMONOLOGY REPORT", title_style))
-    story.append(Spacer(1, 12))
-
-    patient_info = [
-        ["Patient Name", patient_row.get("name") if patient_row else "-"],
-        ["Patient ID", patient_row.get("generated_patient_id") if patient_row else "-"],
-        ["Phone Number", patient_row.get("phone_number") if patient_row else "-"],
-        ["Age / Gender", f'{patient_row.get("age", "-")} / {patient_row.get("gender", "-")}' if patient_row else "-"],
-        [
-            "Height / Weight",
-            f'{patient_row.get("height_cm", "-")} / {patient_row.get("weight_kg", "-")}' if patient_row else "-",
-        ],
-        ["Visit Date", case_row.get("created_at") or "-"],
-        ["Rural Doctor", (rural_doctor or {}).get("full_name") or "-"],
-        ["Specialist", (specialist or {}).get("full_name") or "-"],
-    ]
-    story.append(Paragraph("Patient Details", heading))
-    table = Table(patient_info, colWidths=[1.6 * inch, 4.8 * inch])
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
-                ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ]
-        )
-    )
-    story.append(table)
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Clinical History", heading))
-    story.append(Paragraph(patient_row.get("smoking_history") if patient_row else "-", body))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Vitals & Measurements", heading))
-    vitals_text = (
-        f"SpO2: {vitals.get('spo2', '—')}% | Respiratory Rate: {vitals.get('respiratory_rate', '—')} breaths/min"
-        if vitals
-        else "—"
-    )
-    story.append(Paragraph(vitals_text, body))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Radiology Findings", heading))
-    if xray_png:
-        image_buffer = BytesIO(xray_png)
-        image_buffer.seek(0)
-        img = RLImage(image_buffer, width=400, height=300)
-        story.append(img)
-    else:
-        story.append(Paragraph("-", body))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Rural Diagnosis", heading))
-    story.append(Paragraph(case_row.get("rural_diagnosis_report") or "-", body))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Specialist Diagnosis", heading))
-    story.append(Paragraph(case_row.get("specialist_diagnosis_report") or "-", body))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Recommended Further Investigations", heading))
-    ct_required = "✓ CT Scan" if case_row.get("ct_scan_required") else "CT Scan"
-    bronchoscopy_required = "✓ Bronchoscopy" if case_row.get("bronchoscopy_required") else "Bronchoscopy"
-    story.append(Paragraph(ct_required, body))
-    story.append(Paragraph(bronchoscopy_required, body))
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Follow-up Plan", heading))
-    story.append(Paragraph(case_row.get("follow_up_notes") or "-", body))
-    story.append(Spacer(1, 12))
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-
-    def _footer(canvas, _doc):
-        canvas.setFont("Helvetica", 8)
-        canvas.setFillColor(colors.grey)
-        canvas.drawRightString(A4[0] - 0.75 * inch, 0.5 * inch, f"Generated {timestamp}")
-        canvas.drawString(0.75 * inch, 0.5 * inch, "System Signature: ____________________")
-
-    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
-    pdf_bytes = buffer.getvalue()
-    buffer.close()
-
-    filename = f"{case_id}.pdf"
-    storage_path = f"{case_id}.pdf"
-    supabase.storage.from_("reports").upload(storage_path, pdf_bytes, {"content-type": "application/pdf"})
-    supabase.from_("cases").update({"report_pdf_path": storage_path}).eq("id", case_id).execute()
-
-    return {"status": "ok", "file": filename}
+    threading.Thread(target=_generate_pdf_async, args=(case_id,), daemon=True).start()
+    return {"status": "ok", "file": f"{case_id}.pdf"}
 
 
-@app.post("/finalize-case/{case_id}")
-def finalize_case(case_id: str) -> Dict[str, Any]:
-    case_id = (case_id or "").strip()
-    if not case_id:
-        raise HTTPException(status_code=400, detail="case_id is required")
-
-    reviewed_at = datetime.now(timezone.utc).isoformat()
-    supabase.from_("cases").update({"status": "finalized", "reviewed_at": reviewed_at}).eq("id", case_id).execute()
-
-    case_row = (
-        supabase.from_("cases")
-        .select(
-            "id, patient_id, rural_diagnosis_report, specialist_diagnosis_report, follow_up_notes, ct_scan_required, bronchoscopy_required, reviewed_at, created_at, patients (name, age, gender, smoking_history, height_cm, weight_kg)"
-        )
-        .eq("id", case_id)
-        .maybe_single()
-        .execute()
-    ).data
-    if not case_row:
-        raise HTTPException(status_code=404, detail="Case not found")
-
-    patient_id = case_row.get("patient_id")
-    patient_row = case_row.get("patients")
-    if isinstance(patient_row, list):
-        patient_row = patient_row[0] if patient_row else None
-    if not patient_id or not patient_row:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
+def _generate_pdf_async(target_case_id: str) -> None:
     try:
+        case_row = _fetch_single(
+            "cases",
+            "id, patient_id, rural_doctor_id, specialist_id, rural_diagnosis_report, specialist_diagnosis_report, follow_up_notes, ct_scan_required, bronchoscopy_required, created_at, status",
+            "id",
+            target_case_id,
+        )
+        if not case_row:
+            return
+        if case_row.get("status") != "finalized":
+            return
+
+        patient_id = case_row.get("patient_id")
+        patient_row = _fetch_single(
+            "patients",
+            "name, generated_patient_id, age, gender, height_cm, weight_kg, smoking_history, phone_number",
+            "id",
+            patient_id,
+        )
+        rural_doctor = _fetch_single(
+            "profiles",
+            "full_name",
+            "id",
+            case_row.get("rural_doctor_id"),
+        )
+        specialist = _fetch_single(
+            "profiles",
+            "full_name",
+            "id",
+            case_row.get("specialist_id"),
+        )
+        vitals_row = (
+            supabase.from_("vitals")
+            .select("spo2, respiratory_rate, created_at")
+            .eq("patient_id", patient_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        ).data
+        vitals = (vitals_row or [None])[0] if vitals_row is not None else None
+
         xray_row = (
             supabase.from_("xrays")
             .select("file_path, created_at")
@@ -476,31 +350,174 @@ def finalize_case(case_id: str) -> Dict[str, Any]:
         xray_path = (xray_row or [None])[0].get("file_path") if xray_row else None
         xray_png = _dicom_to_png_bytes("x_rays", xray_path) if xray_path else None
 
-        pdf_bytes = _build_report_pdf(case_row, patient_row, xray_png)
+        styles = getSampleStyleSheet()
+        title_style = styles["Title"]
+        heading = styles["Heading2"]
+        body = styles["BodyText"]
+        body.leading = 14
 
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            leftMargin=0.75 * inch,
+            rightMargin=0.75 * inch,
+            topMargin=0.75 * inch,
+            bottomMargin=0.75 * inch,
+        )
+
+        story = []
+        story.append(Paragraph("TELE-PULMONOLOGY REPORT", title_style))
+        story.append(Spacer(1, 12))
+
+        patient_info = [
+            ["Patient Name", patient_row.get("name") if patient_row else "-"],
+            ["Patient ID", patient_row.get("generated_patient_id") if patient_row else "-"],
+            ["Phone Number", patient_row.get("phone_number") if patient_row else "-"],
+            [
+                "Age / Gender",
+                f'{patient_row.get("age", "-")} / {patient_row.get("gender", "-")}' if patient_row else "-",
+            ],
+            [
+                "Height / Weight",
+                f'{patient_row.get("height_cm", "-")} / {patient_row.get("weight_kg", "-")}' if patient_row else "-",
+            ],
+            ["Visit Date", case_row.get("created_at") or "-"],
+            ["Rural Doctor", (rural_doctor or {}).get("full_name") or "-"],
+            ["Specialist", (specialist or {}).get("full_name") or "-"],
+        ]
+        story.append(Paragraph("Patient Details", heading))
+        table = Table(patient_info, colWidths=[1.6 * inch, 4.8 * inch])
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ]
+            )
+        )
+        story.append(table)
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Clinical History", heading))
+        story.append(Paragraph(patient_row.get("smoking_history") if patient_row else "-", body))
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Vitals & Measurements", heading))
+        vitals_text = (
+            f"SpO2: {vitals.get('spo2', '—')}% | Respiratory Rate: {vitals.get('respiratory_rate', '—')} breaths/min"
+            if vitals
+            else "—"
+        )
+        story.append(Paragraph(vitals_text, body))
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Radiology Findings", heading))
+        if xray_png:
+            image_buffer = BytesIO(xray_png)
+            image_buffer.seek(0)
+            img = RLImage(image_buffer, width=400, height=300)
+            story.append(img)
+        else:
+            story.append(Paragraph("-", body))
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Rural Diagnosis", heading))
+        story.append(Paragraph(case_row.get("rural_diagnosis_report") or "-", body))
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Specialist Diagnosis", heading))
+        story.append(Paragraph(case_row.get("specialist_diagnosis_report") or "-", body))
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Recommended Further Investigations", heading))
+        ct_required = "✓ CT Scan" if case_row.get("ct_scan_required") else "CT Scan"
+        bronchoscopy_required = "✓ Bronchoscopy" if case_row.get("bronchoscopy_required") else "Bronchoscopy"
+        story.append(Paragraph(ct_required, body))
+        story.append(Paragraph(bronchoscopy_required, body))
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph("Follow-up Plan", heading))
+        story.append(Paragraph(case_row.get("follow_up_notes") or "-", body))
+        story.append(Spacer(1, 12))
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+        def _footer(canvas, _doc):
+            canvas.setFont("Helvetica", 8)
+            canvas.setFillColor(colors.grey)
+            canvas.drawRightString(A4[0] - 0.75 * inch, 0.5 * inch, f"Generated {timestamp}")
+            canvas.drawString(0.75 * inch, 0.5 * inch, "System Signature: ____________________")
+
+        doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+
+        storage_path = f"{target_case_id}.pdf"
         _ensure_reports_bucket()
-        if isinstance(pdf_bytes, bool):
-            raise HTTPException(status_code=500, detail="Invalid PDF bytes type")
-        file_path = f"{case_id}.pdf"
-        upload_result = supabase.storage.from_("reports").upload(
-            path=file_path,
+        supabase.storage.from_("reports").upload(
+            path=storage_path,
             file=pdf_bytes,
             file_options={
                 "content-type": "application/pdf",
-                "x-upsert": "true",
-            },
+                "x-upsert": "true"
+            }
         )
-        if isinstance(upload_result, dict) and upload_result.get("error"):
-            raise HTTPException(status_code=500, detail="Report upload failed")
+        supabase.from_("cases").update({
+            "report_pdf_path": storage_path
+        }).eq("id", target_case_id).execute()
+    except Exception as exc:
+        print("REPORT PDF GENERATION FAILED:", repr(exc))
 
-        update_result = supabase.from_("cases").update({"report_pdf_path": file_path}).eq("id", case_id).execute()
-        if not (update_result.data or []):
-            raise HTTPException(status_code=500, detail="Failed to update report path")
-    except Exception as e:
-        print("PDF GENERATION ERROR:", str(e))
-        raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
-    print("Finalize completed for case:", case_id)
+class FinalizeRequest(BaseModel):
+    case_id: str
+
+
+@app.post("/finalize-case")
+async def finalize_case(req: FinalizeRequest) -> Dict[str, Any]:
+    case_id = (req.case_id or "").strip()
+    if not case_id:
+        raise HTTPException(status_code=400, detail="case_id required")
+
+    reviewed_at = datetime.now(timezone.utc).isoformat()
+
+    supabase.from_("cases").update({
+        "status": "finalized",
+        "reviewed_at": reviewed_at
+    }).eq("id", case_id).execute()
+
+    threading.Thread(
+        target=_generate_pdf_async,
+        args=(case_id,),
+        daemon=True
+    ).start()
+
+    return {"success": True}
+
+
+@app.post("/finalize-case/{case_id}")
+def finalize_case_compat(case_id: str):
+    update = (
+        supabase.from_("cases")
+        .update({
+            "status": "finalized",
+            "reviewed_at": datetime.now(timezone.utc).isoformat()
+        })
+        .eq("id", case_id)
+        .execute()
+    )
+    if not update.data:
+        raise HTTPException(status_code=400, detail="Finalize failed")
+    threading.Thread(
+        target=_generate_pdf_async,
+        args=(case_id,),
+        daemon=True
+    ).start()
     return {"success": True}
 
 
@@ -535,9 +552,3 @@ def download_report(case_id: str, request: Request) -> Dict[str, str]:
     if not signed_url:
         raise HTTPException(status_code=500, detail="Unable to generate signed URL")
     return {"signed_url": signed_url}
-
-
-
-
-
-

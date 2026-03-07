@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type CaseSummary = {
   id?: string | null;
@@ -19,34 +19,152 @@ type CaseSummary = {
 
 export default function PatientDashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [viewState, setViewState] = useState("list");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const currentView = params.get("view") || "list";
+
+    if (currentView === viewState) return;
+
+    const next = new URLSearchParams(params);
+
+    if (viewState === "list") {
+      next.delete("view");
+      next.delete("caseId");
+      next.delete("requestId");
+    } else {
+      next.set("view", viewState);
+    }
+
+    const url =
+      next.toString().length > 0
+        ? `${window.location.pathname}?${next.toString()}`
+        : window.location.pathname;
+
+    router.replace(url);
+  }, [router, viewState]);
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const view = params.get("view") || "list";
+      setViewState(view);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
+  useEffect(() => {
+    const view = searchParams.get("view");
+
+    if (!view) {
+      setViewState("list");
+      return;
+    }
+
+    setViewState(view);
+  }, [searchParams]);
+
   const [patientName, setPatientName] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
   const [caseSummary, setCaseSummary] = useState<CaseSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [baseDataReady, setBaseDataReady] = useState(false);
+
+  useEffect(() => {
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!baseDataReady) return;
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get("view");
+    const caseId = params.get("caseId");
+    if (view === "report" && caseId) {
+      setReady(true);
+      return;
+    }
+    setReady(true);
+  }, [baseDataReady]);
 
   useEffect(() => {
     const load = async () => {
+      setBaseDataReady(false);
+      const view = viewState;
+      const caseId = searchParams.get("caseId");
       const storedPatientId = typeof window !== "undefined" ? localStorage.getItem("patient_id") : null;
       if (!storedPatientId) {
         router.push("/patient-login");
         return;
       }
       setPatientId(storedPatientId);
+      const { data: patientRow } = await supabase
+        .from("patients")
+        .select("name")
+        .eq("id", storedPatientId)
+        .maybeSingle();
 
-      const { data: caseRows } = await supabase
-        .from("cases")
-        .select(
-          "id, created_at, reviewed_at, rural_diagnosis_report, specialist_diagnosis_report, follow_up_notes, ct_scan_required, bronchoscopy_required, report_pdf_path, status"
-        )
-        .eq("patient_id", storedPatientId)
-        .eq("status", "finalized")
-        .order("reviewed_at", { ascending: false });
+      if (patientRow?.name) {
+        setPatientName(patientRow.name);
+      }
+
+      let caseRows:
+        | {
+            id?: string | null;
+            created_at?: string | null;
+            reviewed_at?: string | null;
+            rural_diagnosis_report?: string | null;
+            specialist_diagnosis_report?: string | null;
+            follow_up_notes?: string | null;
+            ct_scan_required?: boolean | null;
+            bronchoscopy_required?: boolean | null;
+            report_pdf_path?: string | null;
+            status?: string | null;
+          }[]
+        | null = null;
+      let caseError: { message?: string } | null = null;
+
+      if (view === "report" && caseId) {
+        const { data, error } = await supabase
+          .from("cases")
+          .select(
+            "id, created_at, reviewed_at, rural_diagnosis_report, specialist_diagnosis_report, follow_up_notes, ct_scan_required, bronchoscopy_required, report_pdf_path, status"
+          )
+          .eq("id", caseId)
+          .eq("patient_id", storedPatientId)
+          .eq("status", "finalized")
+          .limit(1);
+        caseRows = data as CaseSummary[] | null;
+        caseError = error as { message?: string } | null;
+      } else {
+        const { data, error } = await supabase
+          .from("cases")
+          .select(
+            "id, created_at, reviewed_at, rural_diagnosis_report, specialist_diagnosis_report, follow_up_notes, ct_scan_required, bronchoscopy_required, report_pdf_path, status"
+          )
+          .eq("patient_id", storedPatientId)
+          .eq("status", "finalized")
+          .order("reviewed_at", { ascending: false });
+        caseRows = data as CaseSummary[] | null;
+        caseError = error as { message?: string } | null;
+      }
+      if (caseError) {
+        setError("Unable to load patient report.");
+        setBaseDataReady(true);
+        return;
+      }
       const caseRow = (caseRows ?? [])[0] as CaseSummary | undefined;
       setCaseSummary(caseRow ?? null);
+      setBaseDataReady(true);
     };
     load();
-  }, [router]);
+  }, [router, searchParams, viewState]);
 
   const handleDownload = async () => {
     if (!caseSummary?.report_pdf_path || !caseSummary?.id) return;
@@ -77,8 +195,27 @@ export default function PatientDashboardPage() {
     window.open(result.signed_url, "_blank", "noopener,noreferrer");
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/patient-login");
+  };
+
+  if (!ready) {
+    return (
+      <div className="p-6 text-slate-400">
+        Loading dashboard...
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
+    <div className="relative min-h-screen bg-slate-950 text-slate-100 p-6">
+      <button
+        onClick={handleLogout}
+        className="absolute top-4 right-4 rounded-lg border border-slate-600 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800"
+      >
+        Logout
+      </button>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold">Welcome to Tele-Pulmonology</h1>
         <p className="mt-1 text-slate-300">Hello {patientName ?? "Patient"}</p>
