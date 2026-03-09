@@ -1,11 +1,12 @@
-﻿"use client";
+"use client";
+export const dynamic = "force-dynamic";
 
 import { FormEvent, useEffect, useState } from "react";
-import dynamic from "next/dynamic";
+import dynamicImport from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-const DicomViewer = dynamic(() => import("@/app/components/DicomViewer"), { ssr: false });
+const DicomViewer = dynamicImport(() => import("@/app/components/DicomViewer"), { ssr: false });
 
 interface SpecialistRequestRow {
   id: string;
@@ -324,6 +325,9 @@ export default function SpecialistDashboardPage() {
 
 
   const activeList = activeTab === "emergency" ? emergencyPending : normalPending;
+  const reviewRequest =
+    [...emergencyPending, ...normalPending, ...acceptedRequests].find((r) => r.id === reviewData?.requestId) ??
+    selectedRequest;
 
   const handleViewAccept = (req: SpecialistRequestRow) => {
     setSelectedRequest(req);
@@ -568,7 +572,52 @@ export default function SpecialistDashboardPage() {
   }
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-blue-50 via-slate-50 to-blue-100">
+    <div className="flex h-screen bg-gray-50">
+      <aside className="w-64 h-screen bg-white shadow-md border-r border-gray-200 p-6 flex flex-col justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-800">Tele-Pulmonology</h1>
+          <p className="text-sm text-gray-600 mt-1">Specialist Dashboard</p>
+          <div className="mt-8 space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                setViewState("list");
+                setViewingPastCaseId(null);
+                setPastCaseDetail(null);
+              }}
+              className={`w-full text-left rounded-xl px-4 py-3 text-sm font-medium ${
+                viewState === "list" || viewState === "accept" || viewState === "review"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-700 border border-gray-200"
+              }`}
+            >
+              Active Requests
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewState("past");
+                setViewingPastCaseId(null);
+                setPastCaseDetail(null);
+              }}
+              className={`w-full text-left rounded-xl px-4 py-3 text-sm font-medium ${
+                viewState === "past" || Boolean(viewingPastCaseId)
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-700 border border-gray-200"
+              }`}
+            >
+              Past Cases
+            </button>
+          </div>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+        >
+          Logout
+        </button>
+      </aside>
+
       <div className="flex-1 overflow-y-auto p-8 space-y-6">
       <div className="flex items-start justify-between">
         <div>
@@ -584,19 +633,13 @@ export default function SpecialistDashboardPage() {
           </div>
         )}
         </div>
-      <button
-        onClick={handleLogout}
-        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
-      >
-        Logout
-      </button>
       </div>
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
       {viewState === "list" && !viewingPastCaseId && (
         <>
-          <section className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
-            <h2 className="text-sm font-semibold text-slate-700">ACTIVE REQUESTS</h2>
+          <section className="bg-white shadow-md rounded-xl p-6">
+            <h2 className="text-sm font-semibold text-gray-800">ACTIVE REQUESTS</h2>
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
@@ -621,52 +664,53 @@ export default function SpecialistDashboardPage() {
                 Normal {normalPending.length > 0 && `(${normalPending.length})`}
               </button>
             </div>
-            <div className="mt-4 bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-blue-600 text-white text-sm text-left">
-                    <th className="px-4 py-3">Patient Name</th>
-                    <th className="px-4 py-3">Emergency Note</th>
-                    <th className="px-4 py-3">Rural Doctor Name</th>
-                    <th className="px-4 py-3">VIEW</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeList.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-3 text-gray-700">
-                        No {activeTab === "emergency" ? "emergency" : "normal"} requests at the moment.
-                      </td>
-                    </tr>
-                  ) : (
-                    activeList.map((r) => (
-                      <tr key={r.id} className="hover:bg-blue-50 transition border-b border-blue-100">
-                        <td className="px-4 py-3 text-gray-700">{r.patient_name ?? "-"}</td>
-                        <td className="px-4 py-3 text-gray-700">{r.rural_message ?? "-"}</td>
-                        <td className="px-4 py-3 text-gray-700">{r.ruralDoctorName}</td>
-                        <td className="px-4 py-3 text-gray-700">
-                          <button
-                            type="button"
-                            onClick={() => handleViewAccept(r)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="mt-4 space-y-3">
+              {activeList.length === 0 ? (
+                <div className="bg-white shadow-md rounded-xl p-6 text-gray-700">
+                  No {activeTab === "emergency" ? "emergency" : "normal"} requests at the moment.
+                </div>
+              ) : (
+                activeList.map((r) => (
+                  <div
+                    key={r.id}
+                    className={`rounded-xl p-4 shadow-md bg-white ${
+                      r.case_priority === "emergency" ? "border-l-4 border-red-400" : "border border-gray-200"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-2 text-sm text-gray-800">
+                        <div className="font-semibold">Patient ID: {r.generated_patient_id ?? r.patient_name ?? "-"}</div>
+                        <div>
+                          <span className={r.case_priority === "emergency"
+                            ? "px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700"
+                            : "px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"}>
+                            {r.case_priority === "emergency" ? "Emergency" : "Normal"}
+                          </span>
+                        </div>
+                        <div className="text-gray-600">Submitted: {r.created_at ? new Date(r.created_at).toLocaleString() : "-"}</div>
+                        <div className="text-gray-600">Rural Doctor: {r.ruralDoctorName ?? "-"}</div>
+                        <div className="text-gray-600">Message: {r.rural_message ?? "-"}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleViewAccept(r)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+                      >
+                        View Case
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
             {acceptedRequests.length > 0 && (
               <div className="mt-4">
-                <h3 className="text-xs font-medium text-slate-600">In progress (accepted, not yet completed)</h3>
+                <h3 className="text-xs font-medium text-gray-600">In progress (accepted, not yet completed)</h3>
                 <div className="mt-2 space-y-2">
                   {acceptedRequests.map((r) => (
                     <div
                       key={r.id}
-                      className="flex items-center justify-between rounded-lg border border-white/30 bg-white/70 px-3 py-2 text-sm backdrop-blur-lg"
+                      className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
                     >
                       <span className="text-gray-700">{r.patient_name ?? "-"}</span>
                       <span className="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700">Accepted</span>
@@ -683,64 +727,66 @@ export default function SpecialistDashboardPage() {
               </div>
             )}
           </section>
-
-          <section className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
-            <h2 className="text-sm font-semibold text-slate-700">PAST CASES</h2>
-            <div className="mt-4">
-              <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 overflow-y-auto overflow-x-hidden" style={{ maxHeight: 400 }}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-blue-600 text-white text-sm text-left">
-                      <th className="px-4 py-3">Index</th>
-                      <th className="px-4 py-3">Patient ID</th>
-                      <th className="px-4 py-3">Emergency / Normal</th>
-                      <th className="px-4 py-3">Rural Doctor Name</th>
-                      <th className="px-4 py-3">View Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pastRequests.map((r, i) => (
-                      <tr key={r.id} className="hover:bg-blue-50 transition border-b border-blue-100">
-                        <td className="px-4 py-3 text-gray-700">{i + 1}</td>
-                        <td className="px-4 py-3 text-gray-700">{r.generated_patient_id ?? "-"}</td>
-                        <td className="px-4 py-3 text-gray-700">
-                          <span className={r.case_priority === "emergency" ? "px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700" : "px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"}>
-                            {r.case_priority === "emergency" ? "Emergency" : "Completed"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">{r.ruralDoctorName}</td>
-                        <td className="px-4 py-3 text-gray-700">
-                          <button
-                            type="button"
-                            onClick={() => handleViewPastDetails(r)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
-                          >
-                            View Details
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
         </>
+      )}
+
+      {viewState === "past" && !viewingPastCaseId && (
+        <section className="bg-white shadow-md rounded-xl p-6">
+          <h2 className="text-sm font-semibold text-gray-800">PAST CASES</h2>
+          <div className="mt-4">
+            <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-y-auto overflow-x-hidden" style={{ maxHeight: 480 }}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-blue-600 text-white text-sm text-left">
+                    <th className="px-4 py-3">Index</th>
+                    <th className="px-4 py-3">Patient ID</th>
+                    <th className="px-4 py-3">Emergency / Normal</th>
+                    <th className="px-4 py-3">Rural Doctor Name</th>
+                    <th className="px-4 py-3">View Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pastRequests.map((r, i) => (
+                    <tr key={r.id} className="hover:bg-blue-50 transition border-b border-blue-100">
+                      <td className="px-4 py-3 text-gray-700">{i + 1}</td>
+                      <td className="px-4 py-3 text-gray-700">{r.generated_patient_id ?? "-"}</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        <span className={r.case_priority === "emergency" ? "px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700" : "px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"}>
+                          {r.case_priority === "emergency" ? "Emergency" : "Normal"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">{r.ruralDoctorName}</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        <button
+                          type="button"
+                          onClick={() => handleViewPastDetails(r)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       )}
 
       {viewState === "accept" ? (
         selectedRequest ? (
-          <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
-          <h2 className="text-lg font-semibold text-slate-800">Accept Request</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Patient: {selectedRequest.patient_name ?? "-"} Â· {selectedRequest.case_priority === "emergency" ? "Emergency" : "Normal"}
+          <div className="bg-white shadow-md rounded-xl p-6">
+          <h2 className="text-lg font-semibold text-gray-800">Accept Request</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Patient: {selectedRequest.patient_name ?? "-"} - {selectedRequest.case_priority === "emergency" ? "Emergency" : "Normal"}
           </p>
           <form onSubmit={handleAcceptRequest} className="mt-4 space-y-4">
             <div>
-              <label className="block text-sm text-slate-600">Message (optional)</label>
+              <label className="block text-sm text-gray-600">Message (optional)</label>
               <textarea
                 rows={3}
-                className="w-full rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 p-4 text-sm"
+                className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500"
                 value={acceptMessage}
                 onChange={(e) => setAcceptMessage(e.target.value)}
                 placeholder="Message for the rural doctor"
@@ -762,7 +808,7 @@ export default function SpecialistDashboardPage() {
                 disabled={accepting}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow disabled:opacity-50"
               >
-                {accepting ? "Acceptingâ€¦" : "Accept Request"}
+                {accepting ? "Accepting..." : "Accept Request"}
               </button>
             </div>
           </form>
@@ -785,108 +831,132 @@ export default function SpecialistDashboardPage() {
           >
             Back to requests
           </button>
-          <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
-            <div className="border-b border-blue-100 pb-3">
-              <h2 className="text-lg font-semibold text-slate-800">
+          <div className="space-y-6">
+            <div className="bg-white shadow-md rounded-xl p-6">
+              <h2 className="text-lg font-semibold text-gray-800">
                 {reviewData.patientName ?? "Patient"} ({reviewData.generatedPatientId ?? "-"})
               </h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-3">
-                <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">Age: {reviewData.patientMeta.age ?? "-"}</div>
-                <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">Gender: {reviewData.patientMeta.gender ?? "-"}</div>
-                <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">Height: {reviewData.patientMeta.height_cm ?? "-"}</div>
-                <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">Weight: {reviewData.patientMeta.weight_kg ?? "-"}</div>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700">Pending</span>
+                {reviewRequest?.accepted_at ? <span className="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700">Accepted</span> : null}
+                {reviewRequest?.completed_at ? <span className="px-3 py-1 text-xs rounded-full bg-green-100 text-green-700">Completed</span> : null}
               </div>
             </div>
 
-            <div className="mt-4">
-              <h3 className="text-sm font-medium text-slate-700">Patient History</h3>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
-                {reviewData.patientHistory ?? "-"}
-              </p>
-            </div>
-
-            <div className="mt-4">
-              <h3 className="text-sm font-medium text-slate-700">Vitals & Spirometry</h3>
-              <div className="mt-2 space-y-2 text-sm text-slate-700">
-                {reviewData.vitals.length === 0 && reviewData.spirometry.length === 0 && <div>-</div>}
-                {reviewData.vitals.map((v, i) => (
-                  <div key={`vital-${i}`}>
-                    SpOâ‚‚: {v.spo2 == null ? "â€”" : `${v.spo2}%`} | RR: {v.respiratory_rate == null ? "â€”" : `${v.respiratory_rate} breaths/min`}
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="space-y-4">
+                <div className="bg-white shadow-md rounded-xl p-6">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-3">Patient Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-700">
+                    <div className="bg-white rounded-xl p-3 border border-gray-200">Name: {reviewData.patientName ?? "-"}</div>
+                    <div className="bg-white rounded-xl p-3 border border-gray-200">Age: {reviewData.patientMeta.age ?? "-"}</div>
+                    <div className="bg-white rounded-xl p-3 border border-gray-200">Gender: {reviewData.patientMeta.gender ?? "-"}</div>
+                    <div className="bg-white rounded-xl p-3 border border-gray-200">Height: {reviewData.patientMeta.height_cm ?? "-"}</div>
+                    <div className="bg-white rounded-xl p-3 border border-gray-200">Weight: {reviewData.patientMeta.weight_kg ?? "-"}</div>
                   </div>
-                ))}
-                {reviewData.spirometry.map((s, i) => (
-                  <div key={`spiro-${i}`}>
-                    FVC: {s.fvc == null ? "â€”" : `${s.fvc} L`} | FEVâ‚: {s.fev1 == null ? "â€”" : `${s.fev1} L`} | FEVâ‚/FVC: {s.fev1_fvc == null ? "â€”" : `${s.fev1_fvc}%`} | FEVâ‚/FEVâ‚†:{" "}
-                    {s.fev1_fev6 == null ? "â€”" : `${s.fev1_fev6}%`} | PEF: {s.pef == null ? "â€”" : `${s.pef} L/min`}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <h3 className="text-sm font-medium text-slate-700">X-Ray</h3>
-              <button
-                type="button"
-                onClick={() => reviewData.xrayPaths[0] && openXrayModal(reviewData.xrayPaths[0])}
-                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
-              >
-                VIEW X-RAY
-              </button>
-            </div>
-
-            <div className="mt-6 bg-white/80 backdrop-blur-xl border border-white/40 rounded-xl shadow p-5">
-              <h3 className="text-sm font-medium text-slate-700">Specialist Diagnosis</h3>
-              <label className="mt-2 flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={furtherDiagnosisRequired}
-                  onChange={(e) => setFurtherDiagnosisRequired(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
-                />
-                Further diagnosis required
-              </label>
-              {furtherDiagnosisRequired && (
-                <div className="mt-2 space-y-2 text-sm text-slate-700">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={furtherDiagnosisTypes.ctScan}
-                      onChange={(e) =>
-                        setFurtherDiagnosisTypes((prev) => ({ ...prev, ctScan: e.target.checked }))
-                      }
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
-                    />
-                    CT Scan Required
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={furtherDiagnosisTypes.bronchoscopy}
-                      onChange={(e) =>
-                        setFurtherDiagnosisTypes((prev) => ({ ...prev, bronchoscopy: e.target.checked }))
-                      }
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
-                    />
-                    Bronchoscopy Required
-                  </label>
                 </div>
-              )}
-              <label className="mt-2 block text-sm text-slate-600">Specialist Diagnosis Report</label>
-              <textarea
-                rows={5}
-                className="w-full rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 p-4 text-sm"
-                value={specialistDiagnosisReport}
-                onChange={(e) => setSpecialistDiagnosisReport(e.target.value)}
-                placeholder="Your diagnosis and recommendationsâ€¦"
-              />
-              <button
-                type="button"
-                onClick={handleFinishCase}
-                disabled={finishing}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 shadow disabled:opacity-50 mt-4"
-              >
-                {finishing ? "Savingâ€¦" : "Finish"}
-              </button>
+
+                <div className="bg-white shadow-md rounded-xl p-6">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Clinical History</h3>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{reviewData.patientHistory ?? "-"}</p>
+                </div>
+
+                <div className="bg-white shadow-md rounded-xl p-6">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Vitals & Spirometry</h3>
+                  <div className="space-y-2 text-sm text-gray-600">
+                    {reviewData.vitals.length === 0 && reviewData.spirometry.length === 0 && <div>-</div>}
+                    {reviewData.vitals.map((v, i) => (
+                      <div key={`vital-${i}`}>
+                        SpO2: {v.spo2 == null ? "-" : `${v.spo2}%`} | Respiratory Rate: {v.respiratory_rate == null ? "-" : `${v.respiratory_rate} breaths/min`}
+                      </div>
+                    ))}
+                    {reviewData.spirometry.map((s, i) => (
+                      <div key={`spiro-${i}`}>
+                        FVC: {s.fvc == null ? "-" : `${s.fvc} L`} | FEV1: {s.fev1 == null ? "-" : `${s.fev1} L`} | FEV1/FVC: {s.fev1_fvc == null ? "-" : `${s.fev1_fvc}%`} | FEV1/FEV6: {s.fev1_fev6 == null ? "-" : `${s.fev1_fev6}%`} | PEF: {s.pef == null ? "-" : `${s.pef} L/min`}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white shadow-md rounded-xl p-6">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Rural Doctor Diagnosis</h3>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{reviewData.ruralDiagnosis ?? "-"}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-white shadow-md rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-2">X-Ray Viewer</h3>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-gray-600 truncate">
+                      File: {reviewData.xrayPaths[0] ? reviewData.xrayPaths[0].split("/").pop() : "-"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => reviewData.xrayPaths[0] && openXrayModal(reviewData.xrayPaths[0])}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+                    >
+                      View X-Ray
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white shadow-md rounded-xl p-5">
+                  <h3 className="text-sm font-semibold text-gray-800">Specialist Diagnosis Report</h3>
+                  <label className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={furtherDiagnosisRequired}
+                      onChange={(e) => setFurtherDiagnosisRequired(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
+                    />
+                    Further diagnosis required
+                  </label>
+                  {furtherDiagnosisRequired && (
+                    <div className="mt-2 space-y-2 text-sm text-gray-600">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={furtherDiagnosisTypes.ctScan}
+                          onChange={(e) =>
+                            setFurtherDiagnosisTypes((prev) => ({ ...prev, ctScan: e.target.checked }))
+                          }
+                          className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
+                        />
+                        CT Scan Required
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={furtherDiagnosisTypes.bronchoscopy}
+                          onChange={(e) =>
+                            setFurtherDiagnosisTypes((prev) => ({ ...prev, bronchoscopy: e.target.checked }))
+                          }
+                          className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
+                        />
+                        Bronchoscopy Required
+                      </label>
+                    </div>
+                  )}
+                  <textarea
+                    rows={8}
+                    className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 bg-white placeholder:text-gray-400 mt-3 focus:ring-2 focus:ring-blue-500"
+                    value={specialistDiagnosisReport}
+                    onChange={(e) => setSpecialistDiagnosisReport(e.target.value)}
+                    placeholder="Your diagnosis and recommendations..."
+                  />
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={handleFinishCase}
+                      disabled={finishing}
+                      className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-500 disabled:opacity-50"
+                    >
+                      Finish
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           </div>
@@ -914,59 +984,59 @@ export default function SpecialistDashboardPage() {
             onClick={() => {
               setViewingPastCaseId(null);
               setPastCaseDetail(null);
-              setViewState("list");
+              setViewState("past");
             }}
             className="text-sm text-slate-600 hover:text-slate-800"
           >
             Back to Past Cases
           </button>
-          <div className="bg-white/70 backdrop-blur-xl border border-white/40 rounded-2xl shadow-xl p-6">
+          <div className="bg-white shadow-md rounded-xl p-6">
             <h2 className="text-lg font-semibold text-slate-800">{pastCaseDetail?.patientName ?? "Patient"}</h2>
             <p className="text-sm text-slate-600">Patient ID: {pastCaseDetail?.generatedPatientId ?? "-"}</p>
             <div className="mt-4 grid gap-4 text-sm">
-              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
                 <h3 className="text-sm font-medium text-slate-700">Patient Information</h3>
                 <div className="mt-2 grid gap-1 text-slate-700">
                   <div>Name: {pastCaseDetail.patientName ?? "-"}</div>
                   <div>Patient ID: {pastCaseDetail.generatedPatientId ?? "-"}</div>
                 </div>
               </div>
-              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
                 <h3 className="text-sm font-medium text-slate-700">Clinical History</h3>
                 <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.patientHistory ?? "-"}</p>
               </div>
-              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
                 <h3 className="text-sm font-medium text-slate-700">Vitals</h3>
                 <div className="mt-2 grid gap-1 text-slate-700">
-                  <div>SpOâ‚‚: {pastCaseDetail.vitals?.spo2 == null ? "â€”" : `${pastCaseDetail.vitals.spo2}%`}</div>
+                  <div>SpO2: {pastCaseDetail.vitals?.spo2 == null ? "-" : `${pastCaseDetail.vitals.spo2}%`}</div>
                   <div>
                     Respiratory Rate:{" "}
                     {pastCaseDetail.vitals?.respiratory_rate == null
-                      ? "â€”"
+                      ? "-"
                       : `${pastCaseDetail.vitals.respiratory_rate} breaths/min`}
                   </div>
-                  <div>FVC: {pastCaseDetail.spirometry?.fvc == null ? "â€”" : `${pastCaseDetail.spirometry.fvc} L`}</div>
-                  <div>FEVâ‚: {pastCaseDetail.spirometry?.fev1 == null ? "â€”" : `${pastCaseDetail.spirometry.fev1} L`}</div>
+                  <div>FVC: {pastCaseDetail.spirometry?.fvc == null ? "-" : `${pastCaseDetail.spirometry.fvc} L`}</div>
+                  <div>FEV1: {pastCaseDetail.spirometry?.fev1 == null ? "-" : `${pastCaseDetail.spirometry.fev1} L`}</div>
                   <div>
-                    FEVâ‚ / FVC:{" "}
-                    {pastCaseDetail.spirometry?.fev1_fvc == null ? "â€”" : `${pastCaseDetail.spirometry.fev1_fvc}%`}
+                    FEV1 / FVC:{" "}
+                    {pastCaseDetail.spirometry?.fev1_fvc == null ? "-" : `${pastCaseDetail.spirometry.fev1_fvc}%`}
                   </div>
                   <div>
-                    FEVâ‚ / FEVâ‚†:{" "}
-                    {pastCaseDetail.spirometry?.fev1_fev6 == null ? "â€”" : `${pastCaseDetail.spirometry.fev1_fev6}%`}
+                    FEV1 / FEV6:{" "}
+                    {pastCaseDetail.spirometry?.fev1_fev6 == null ? "-" : `${pastCaseDetail.spirometry.fev1_fev6}%`}
                   </div>
-                  <div>PEF: {pastCaseDetail.spirometry?.pef == null ? "â€”" : `${pastCaseDetail.spirometry.pef} L/min`}</div>
+                  <div>PEF: {pastCaseDetail.spirometry?.pef == null ? "-" : `${pastCaseDetail.spirometry.pef} L/min`}</div>
                 </div>
               </div>
-              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
                 <h3 className="text-sm font-medium text-slate-700">Rural Diagnosis</h3>
                 <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.ruralDiagnosis ?? "-"}</p>
               </div>
-              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
                 <h3 className="text-sm font-medium text-slate-700">Specialist Diagnosis</h3>
                 <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.specialistDiagnosis ?? "-"}</p>
               </div>
-              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
                 <h3 className="text-sm font-medium text-slate-700">Recommended Further Investigations</h3>
                 <div className="mt-2 space-y-2 text-slate-700">
                   <label className="flex items-center gap-2">
@@ -979,11 +1049,11 @@ export default function SpecialistDashboardPage() {
                   </label>
                 </div>
               </div>
-              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
                 <h3 className="text-sm font-medium text-slate-700">Follow-up Notes</h3>
                 <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.followUps ?? "-"}</p>
               </div>
-              <div className="bg-white/70 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
                 <h3 className="text-sm font-medium text-slate-700">X-ray Image</h3>
                 {pastCaseDetail.xrayPaths?.length > 0 ? (
                   <button
