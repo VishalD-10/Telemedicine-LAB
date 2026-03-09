@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Script from "next/script";
 import { supabase } from "@/lib/supabaseClient";
 
 type CaseSummary = {
@@ -50,8 +51,8 @@ export default function PatientDashboardUI() {
   const [caseList, setCaseList] = useState<CaseSummary[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [specialistName, setSpecialistName] = useState<string>("Pending");
-  const [vitals, setVitals] = useState<VitalsRow[]>([]);
-  const [spirometry, setSpirometry] = useState<SpirometryRow[]>([]);
+  const [vitalsData, setVitalsData] = useState<VitalsRow[]>([]);
+  const [spirometryData, setSpirometryData] = useState<SpirometryRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [ready, setReady] = useState(false);
@@ -104,14 +105,14 @@ export default function PatientDashboardUI() {
         .select("spo2, respiratory_rate, created_at")
         .eq("patient_id", storedPatientId)
         .order("created_at", { ascending: false });
-      setVitals((vitalsRows ?? []) as VitalsRow[]);
+      setVitalsData((vitalsRows ?? []) as VitalsRow[]);
 
       const { data: spirometryRows } = await supabase
         .from("spirometry")
         .select("fvc, fev1, fev1_fvc, fev1_fev6, pef, created_at")
         .eq("patient_id", storedPatientId)
         .order("created_at", { ascending: false });
-      setSpirometry((spirometryRows ?? []) as SpirometryRow[]);
+      setSpirometryData((spirometryRows ?? []) as SpirometryRow[]);
     };
 
     load();
@@ -142,8 +143,72 @@ export default function PatientDashboardUI() {
     loadSpecialistName();
   }, [selectedCase?.specialist_id]);
 
-  const latestVitals = vitals[0] ?? null;
-  const latestSpirometry = spirometry[0] ?? null;
+  const caseData = useMemo(
+    () => ({
+      ...(selectedCase ?? {}),
+      name: patient?.name ?? "",
+      generated_patient_id: patient?.generated_patient_id ?? "",
+      vitals: vitalsData,
+      spirometry: spirometryData,
+      specialist_diagnosis:
+        selectedCase?.specialist_diagnosis_report ?? selectedCase?.rural_diagnosis_report ?? "",
+    }),
+    [patient?.generated_patient_id, selectedCase, spirometryData, vitalsData]
+  );
+  const vitals = caseData?.vitals?.[0] ?? {};
+  const spirometry = caseData?.spirometry?.[0] ?? {};
+
+  const chatlingConfig = useMemo(
+    () =>
+      `window.chtlConfig = ${JSON.stringify({
+        chatbotId: "8113368681",
+        context: {
+          patient_id: caseData?.generated_patient_id || "",
+          patient_name: caseData?.name || "",
+          spo2: vitals?.spo2 || "",
+          respiratory_rate: vitals?.respiratory_rate || "",
+          fev1: spirometry?.fev1 || "",
+          fvc: spirometry?.fvc || "",
+          fev1_fvc: spirometry?.fev1_fvc || "",
+          diagnosis: caseData?.specialist_diagnosis || "",
+        },
+      })}`,
+    [caseData, spirometry, vitals]
+  );
+
+  const reportSummary = useMemo(
+    () =>
+      `Patient ID: ${caseData?.generated_patient_id || ""}
+
+Vitals:
+SpO2: ${vitals?.spo2 || ""}
+Respiratory Rate: ${vitals?.respiratory_rate || ""}
+
+Spirometry:
+FVC: ${spirometry?.fvc || ""}
+FEV1: ${spirometry?.fev1 || ""}
+FEV1/FVC: ${spirometry?.fev1_fvc || ""}
+PEF: ${spirometry?.pef || ""}
+
+Specialist Diagnosis:
+${caseData?.specialist_diagnosis || ""}`,
+    [caseData, spirometry, vitals]
+  );
+
+  const autoReportScript = useMemo(() => {
+    const sanitizedReport = reportSummary.replace(/`/g, "");
+    const message = `Patient Report:\n${sanitizedReport}\n\nExplain this lung report to the patient in simple terms.`;
+    return `setTimeout(function() {
+  if (window.Chatling && typeof window.Chatling.sendMessage === "function") {
+    window.Chatling.sendMessage(${JSON.stringify(message)});
+  }
+}, 4000);`;
+  }, [reportSummary]);
+
+  const hasPatientContext = useMemo(
+    () => Boolean(caseData?.generated_patient_id),
+    [caseData]
+  );
 
   const handleDownload = async () => {
     if (!selectedCase?.report_pdf_path || !selectedCase?.id) return;
@@ -438,21 +503,19 @@ export default function PatientDashboardUI() {
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
                     <h3 className="text-sm font-semibold text-gray-800">Vitals</h3>
                     <div className="mt-2 space-y-1 text-sm text-gray-600">
-                      <p>SpO2: {latestVitals?.spo2 == null ? "-" : `${latestVitals.spo2}%`}</p>
-                      <p>
-                        Respiratory Rate: {latestVitals?.respiratory_rate == null ? "-" : `${latestVitals.respiratory_rate}`}
-                      </p>
+                      <p>SpO2: {vitals?.spo2 ?? "--"}</p>
+                      <p>Respiratory Rate: {vitals?.respiratory_rate ?? "--"} breaths/min</p>
                     </div>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
                     <h3 className="text-sm font-semibold text-gray-800">Spirometry</h3>
                     <div className="mt-2 space-y-1 text-sm text-gray-600">
-                      <p>FVC: {latestSpirometry?.fvc == null ? "-" : `${latestSpirometry.fvc} L`}</p>
-                      <p>FEV1: {latestSpirometry?.fev1 == null ? "-" : `${latestSpirometry.fev1} L`}</p>
-                      <p>FEV1/FVC: {latestSpirometry?.fev1_fvc == null ? "-" : `${latestSpirometry.fev1_fvc}%`}</p>
-                      <p>FEV1/FEV6: {latestSpirometry?.fev1_fev6 == null ? "-" : `${latestSpirometry.fev1_fev6}%`}</p>
-                      <p>PEF: {latestSpirometry?.pef == null ? "-" : `${latestSpirometry.pef} L/min`}</p>
+                      <p>FVC: {spirometry?.fvc ?? "--"} L</p>
+                      <p>FEV1: {spirometry?.fev1 ?? "--"} L</p>
+                      <p>FEV1/FVC: {spirometry?.fev1_fvc ?? "--"} %</p>
+                      <p>FEV1/FEV6: {spirometry?.fev1_fev6 ?? "--"} %</p>
+                      <p>PEF: {spirometry?.pef ?? "--"} L/min</p>
                     </div>
                   </div>
 
@@ -484,8 +547,31 @@ export default function PatientDashboardUI() {
               )}
             </section>
           )}
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+            <p className="text-sm text-gray-500 mt-4">
+              PulmoAI provides educational information only. Diagnosis and treatment decisions must be made by your
+              doctor.
+            </p>
+          </div>
         </div>
       </div>
+
+      {hasPatientContext && (
+        <>
+          <Script id="pulmoai-config" strategy="afterInteractive">
+            {chatlingConfig}
+          </Script>
+          <Script
+            id="pulmoai-loader"
+            src="https://chatling.ai/js/embed.js"
+            strategy="afterInteractive"
+          />
+          <Script id="pulmoai-auto-report" strategy="afterInteractive">
+            {autoReportScript}
+          </Script>
+        </>
+      )}
     </div>
   );
 }
