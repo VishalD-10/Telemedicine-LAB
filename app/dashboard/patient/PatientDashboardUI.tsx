@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Script from "next/script";
+import PulmoAIChat from "@/components/patient/PulmoAIChat";
 import { supabase } from "@/lib/supabaseClient";
 
 type CaseSummary = {
@@ -158,24 +159,6 @@ export default function PatientDashboardUI() {
   const vitals = caseData?.vitals?.[0] ?? {};
   const spirometry = caseData?.spirometry?.[0] ?? {};
 
-  const chatlingConfig = useMemo(
-    () =>
-      `window.chtlConfig = ${JSON.stringify({
-        chatbotId: "8113368681",
-        context: {
-          patient_id: caseData?.generated_patient_id || "",
-          patient_name: caseData?.name || "",
-          spo2: vitals?.spo2 || "",
-          respiratory_rate: vitals?.respiratory_rate || "",
-          fev1: spirometry?.fev1 || "",
-          fvc: spirometry?.fvc || "",
-          fev1_fvc: spirometry?.fev1_fvc || "",
-          diagnosis: caseData?.specialist_diagnosis || "",
-        },
-      })}`,
-    [caseData, spirometry, vitals]
-  );
-
   const reportSummary = useMemo(
     () =>
       `Patient ID: ${caseData?.generated_patient_id || ""}
@@ -245,6 +228,9 @@ ${caseData?.specialist_diagnosis || ""}`,
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    if ((window as any).Chatling) {
+      (window as any).Chatling.destroy();
+    }
     router.replace("/login");
   };
 
@@ -559,14 +545,7 @@ ${caseData?.specialist_diagnosis || ""}`,
 
       {hasPatientContext && (
         <>
-          <Script id="pulmoai-config" strategy="afterInteractive">
-            {chatlingConfig}
-          </Script>
-          <Script
-            id="pulmoai-loader"
-            src="https://chatling.ai/js/embed.js"
-            strategy="afterInteractive"
-          />
+          <PulmoAIChat patientId={caseData.generated_patient_id} />
           <Script id="pulmoai-auto-report" strategy="afterInteractive">
             {autoReportScript}
           </Script>
