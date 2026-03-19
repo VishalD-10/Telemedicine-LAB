@@ -33,13 +33,7 @@ export default function TreatmentViewer({
         </div>
         <div className={card}>
           <p className="text-xs text-slate-500">Oxygen therapy</p>
-          <p className="mt-1 whitespace-pre-wrap">
-            {oxygenTherapy === true
-              ? "Required"
-              : oxygenTherapy === false
-                ? "Not Required"
-                : "-"}
-          </p>
+          <p className="mt-1 whitespace-pre-wrap">{oxygenTherapy ?? "-"}</p>
         </div>
         <div className={card}>
           <p className="text-xs text-slate-500">Rehabilitation</p>
