@@ -4,6 +4,7 @@
 
 body {
   @apply bg-slate-950 text-slate-100 antialiased;
+  scroll-behavior: smooth;
 }
 
 a {
@@ -72,4 +73,169 @@ textarea {
 .new-case-glass .text-slate-300,
 .new-case-glass .text-slate-400 {
   color: #334155;
+}
+
+.page-transition-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.page-transition-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: linear-gradient(145deg, #e2e8f0, #f8fafc);
+}
+
+.page-transition-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 8% 12%, rgba(255, 255, 255, 0.6), transparent 38%),
+    radial-gradient(circle at 92% 16%, rgba(191, 219, 254, 0.45), transparent 36%),
+    radial-gradient(circle at 50% 84%, rgba(125, 211, 252, 0.22), transparent 42%);
+}
+
+.theme-specialist::before {
+  background: linear-gradient(150deg, #0f172a 0%, #1d4ed8 48%, #2563eb 100%);
+}
+
+.theme-rural::before {
+  background: linear-gradient(150deg, #ecfeff 0%, #bae6fd 45%, #93c5fd 100%);
+}
+
+.theme-patient::before {
+  background: linear-gradient(160deg, #ffffff 0%, #eff6ff 42%, #dbeafe 100%);
+}
+
+.page-transition-content {
+  animation: page-enter 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+h1,
+.medical-h1 {
+  @apply text-2xl md:text-3xl font-semibold tracking-tight text-slate-800;
+}
+
+h2,
+.medical-h2 {
+  @apply text-lg md:text-xl font-semibold text-slate-700;
+}
+
+.medical-body {
+  @apply text-sm md:text-base leading-relaxed text-slate-700;
+}
+
+.medical-caption {
+  @apply text-xs text-slate-500;
+}
+
+.medical-glass-card {
+  position: relative;
+  overflow: hidden;
+  transform-style: preserve-3d;
+  transition: transform 240ms ease, box-shadow 240ms ease;
+}
+
+.medical-glass-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(130deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.1));
+}
+
+.medical-glass-card:hover {
+  transform: translateY(-2px) perspective(900px) rotateX(0.8deg) rotateY(-0.8deg);
+  box-shadow: 0 18px 36px -20px rgba(15, 23, 42, 0.45);
+}
+
+.medical-loader {
+  animation: breathe 2.8s ease-in-out infinite;
+}
+
+.medical-loader-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.95), rgba(241, 245, 249, 0.95));
+}
+
+.medical-loader-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.82), transparent);
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.92;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.medical-modal {
+  transform-origin: top center;
+}
+
+.page-transition-content :where(.shadow-sm, .shadow-md, .shadow-lg) {
+  transition: transform 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
+}
+
+.page-transition-content :where(.shadow-sm, .shadow-md, .shadow-lg):hover {
+  transform: translateY(-1px);
+}
+
+button {
+  position: relative;
+  overflow: hidden;
+}
+
+button::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.22);
+  transform: translate(-50%, -50%);
+  transition: width 220ms ease, height 220ms ease, opacity 220ms ease;
+  opacity: 0;
+  pointer-events: none;
+}
+
+button:active::after {
+  width: 180px;
+  height: 180px;
+  opacity: 1;
 }

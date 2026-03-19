@@ -3,7 +3,7 @@ create type public.user_role as enum ('rural_doctor', 'specialist', 'patient');
 
 create type public.case_priority as enum ('emergency', 'normal');
 
-create type public.case_status as enum ('pending', 'assigned', 'reviewed', 'completed');
+create type public.case_status as enum ('pending', 'assigned', 'reviewed', 'reviewing', 'completed');
 
 create type public.gender as enum ('male', 'female', 'other');
 
@@ -523,3 +523,38 @@ using (
       and pr.role = 'specialist'
   )
 );
+
+-- Auto-update case status when review timestamp is set
+create or replace function public.auto_update_case_status()
+returns trigger
+language plpgsql
+as $$
+begin
+
+-- Specialist accepted
+if new.assigned_at is not null and old.assigned_at is null then
+    new.status := 'accepted';
+end if;
+
+-- Specialist started reviewing
+if new.reviewed_at is not null and old.reviewed_at is null then
+    new.status := 'reviewing';
+end if;
+
+-- Specialist finished report
+if new.reviewed_at is not null 
+   and new.status not in ('finalized') 
+   and new.report_pdf_path is not null then
+    new.status := 'completed';
+end if;
+
+return new;
+
+end;
+$$;
+
+drop trigger if exists trg_auto_update_case_status on public.cases;
+create trigger trg_auto_update_case_status
+before update on public.cases
+for each row
+execute function public.auto_update_case_status();

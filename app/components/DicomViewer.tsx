@@ -1,4 +1,4 @@
-﻿"use client";
+﻿﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 
@@ -11,98 +11,68 @@ interface DicomViewerProps {
 
 export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose }: DicomViewerProps) {
   const [dicomError, setDicomError] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [image, setImage] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, string | number | null> | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [loadingFull, setLoadingFull] = useState(false);
-  const [fullLoaded, setFullLoaded] = useState(false);
+  const [mode, setMode] = useState("original");
+  const [loading, setLoading] = useState(false);
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const isOpenRef = useRef(isOpen);
-  const fullLoadTokenRef = useRef(0);
+  const options = [
+    { label: "Original", value: "original" },
+    { label: "CLAHE Enhancement", value: "clahe" },
+    { label: "Edge Detection", value: "edge" },
+    { label: "Lung Enhancement", value: "lung" },
+    { label: "Noise Reduction", value: "smooth" },
+    { label: "Invert", value: "invert" }
+  ];
 
-  useEffect(() => {
-    isOpenRef.current = isOpen;
-    if (!isOpen) {
-      fullLoadTokenRef.current += 1;
+  const loadDicom = async (mode: string) => {
+    if (!xrayPath) return;
+
+    try {
+      setLoading(true);
+      setDicomError(null);
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/render-dicom?mode=${mode}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bucket: "x_rays",
+            path: xrayPath
+          })
+        }
+      );
+
+      const data = await res.json();
+      setImage(`data:image/png;base64,${data.image_base64}`);
+      setMetadata((data.metadata as Record<string, string | number | null>) ?? null);
+    } catch (e) {
+      console.error("DICOM LOAD ERROR", e);
+      setDicomError("Unable to load DICOM image.");
+    } finally {
+      setLoading(false);
     }
-  }, [isOpen]);
+  };
 
   useEffect(() => {
     if (!isOpen || !xrayPath) return;
-    let cancelled = false;
-    setDicomError(null);
-    setImageBase64(null);
-    setMetadata(null);
-    setFullLoaded(false);
-    setLoadingFull(false);
-    setLoadingPreview(true);
+    loadDicom(mode);
+  }, [mode, xrayPath]);
 
-    const loadPreview = async () => {
-      try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/render-dicom-preview`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bucket: "x_rays", path: xrayPath }),
-        });
-        if (!response.ok) {
-          throw new Error("DICOM preview failed.");
-        }
-        const result = (await response.json()) as {
-          image_base64: string;
-        };
-        if (cancelled) return;
-        setImageBase64(result.image_base64);
-        setDicomError(null);
-        setLoadingPreview(false);
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) {
-          console.warn("Preview failed, loading full DICOM.");
-          setLoadingPreview(false);
-          loadFullDicom();
-        }
-      }
-    };
-
-    loadPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, xrayPath]);
-
-  const loadFullDicom = async () => {
+  useEffect(() => {
     if (!isOpen) return;
-    if (loadingFull || fullLoaded) return;
-    if (!xrayPath) return;
-    const token = ++fullLoadTokenRef.current;
-    setLoadingFull(true);
-    setDicomError(null);
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/render-dicom`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bucket: "x_rays", path: xrayPath }),
-      });
-      if (!response.ok) {
-        throw new Error("DICOM render failed.");
-      }
-      const result = (await response.json()) as {
-        image_base64: string;
-        metadata: Record<string, string | number | null>;
-      };
-      if (!isOpenRef.current || token !== fullLoadTokenRef.current) return;
-      setImageBase64(result.image_base64);
-      setMetadata(result.metadata);
-      setFullLoaded(true);
-    } catch (err) {
-      console.error(err);
-      if (!isOpenRef.current || token !== fullLoadTokenRef.current) return;
-      setDicomError("Unable to load DICOM details.");
-    } finally {
-      if (!isOpenRef.current || token !== fullLoadTokenRef.current) return;
-      setLoadingFull(false);
+    if (xrayPath) loadDicom("original");
+  }, [xrayPath]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setMode("original");
+      setImage(null);
+      setMetadata(null);
+      setDicomError(null);
     }
-  };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -123,27 +93,41 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose }: Dico
           Close
         </button>
         {xrayPath && (
-          <div className="mb-2 pt-10 text-sm text-blue-100 opacity-80">
-            File: {xrayPath}
+          <div className="mb-2 pt-10 text-sm text-blue-100 opacity-80 space-y-3">
+            <div>File: {xrayPath}</div>
+            <div className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/70 px-2.5 py-2 shadow-sm backdrop-blur-md">
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value)}
+                className="rounded-xl border border-slate-200/80 px-3 py-2 bg-white shadow-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                {options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
         <div>
           <div className="flex h-[70vh] w-[70vw] max-w-full flex-col">
             <div className="relative flex items-center justify-center w-full h-[60vh] bg-black rounded-xl overflow-hidden">
-              {imageBase64 ? (
+              {image ? (
                 <img
                   ref={imageRef}
-                  src={`data:image/png;base64,${imageBase64}`}
+                  src={image}
                   alt="DICOM X-ray"
-                  className="max-w-full max-h-full object-contain"
+                  className="max-w-full max-h-full object-contain transition-all duration-200"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-black">
-                  {loadingPreview ? (
-                    <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-500 border-t-transparent" />
-                  ) : (
-                    <div className="h-full w-full bg-black" />
-                  )}
+                  {loading ? <div className="animate-pulse bg-gray-200 rounded-xl h-full w-full" /> : <div className="h-full w-full bg-black" />}
+                </div>
+              )}
+              {loading && image && (
+                <div className="absolute inset-0 pointer-events-none p-3">
+                  <div className="animate-pulse bg-gray-200/35 rounded-xl h-full w-full" />
                 </div>
               )}
               <button
@@ -155,19 +139,7 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose }: Dico
               </button>
             </div>
             <div className="h-[25%] overflow-y-auto mt-4 pt-3 border-t border-white/10">
-              {!fullLoaded ? (
-                <div className="flex items-center justify-between">
-                  <p className="text-blue-200 text-sm">Load full DICOM details to view metadata.</p>
-                  <button
-                    type="button"
-                    onClick={loadFullDicom}
-                    disabled={loadingFull}
-                    className="px-4 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md shadow disabled:opacity-50"
-                  >
-                    {loadingFull ? "Loading..." : "Load Details"}
-                  </button>
-                </div>
-              ) : (
+              {metadata ? (
                 <table className="w-full text-xs text-slate-300">
                   <tbody>
                     {[
@@ -191,6 +163,10 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose }: Dico
                     ))}
                   </tbody>
                 </table>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <p className="text-blue-200 text-sm">Metadata unavailable for this image.</p>
+                </div>
               )}
             </div>
           </div>

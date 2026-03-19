@@ -1,22 +1,66 @@
 ﻿"use client";
 
-import { FormEvent, useEffect, useState, type ChangeEvent } from "react";
+import { FormEvent, useEffect, useRef, useState, type ChangeEvent } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Activity, HeartPulse, History, Hospital, LogOut, Microscope, PlusCircle, Stethoscope, Wind } from "lucide-react";
+import { Activity, AlertTriangle, HeartPulse, History, Hospital, LogOut, Microscope, PlusCircle, Stethoscope, Wind } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import DiagnosisViewer from "@/components/rural/DiagnosisViewer";
+import TreatmentViewer from "@/components/rural/TreatmentViewer";
+import PrescriptionViewer from "@/components/rural/PrescriptionViewer";
+import FollowupTracker from "@/components/rural/FollowupTracker";
+import CaseTimeline from "@/components/shared/CaseTimeline";
 
 type Gender = "male" | "female" | "other";
 
 type CaseOption = {
   id: string;
   priority: string | null;
+  created_at?: string | null;
   patient:
     | {
         generated_patient_id: string | null;
       }
     | {
         generated_patient_id: string | null;
+      }[]
+    | null;
+};
+
+type InProgressCaseOption = {
+  id: string;
+  status: "pending" | "accepted" | "completed" | string;
+  created_at?: string | null;
+  patient:
+    | {
+        name: string | null;
+      }
+    | {
+        name: string | null;
+      }[]
+    | null;
+  specialist_requests?:
+    | {
+        status: string | null;
+        specialist:
+          | {
+              full_name: string | null;
+            }
+          | {
+              full_name: string | null;
+            }[]
+          | null;
+      }
+    | {
+        status: string | null;
+        specialist:
+          | {
+              full_name: string | null;
+            }
+          | {
+              full_name: string | null;
+            }[]
+          | null;
       }[]
     | null;
 };
@@ -54,9 +98,6 @@ export default function RuralDashboardPage() {
     specialist_name?: string | null;
     rural_message?: string | null;
     specialist_message?: string | null;
-    specialist_diagnosis_report?: string | null;
-    case_status?: string | null;
-    status?: string | null;
     accepted_at?: string | null;
     completed_at?: string | null;
   } | null>(null);
@@ -83,14 +124,143 @@ export default function RuralDashboardPage() {
     } | null;
     xrays?: { path: string }[];
     rural_diagnosis?: string | null;
-    specialist_diagnosis?: string | null;
     finalized_report?: string | null;
     follow_up_notes?: string | null;
     case_status?: string | null;
-    ct_scan_required?: boolean | null;
-    bronchoscopy_required?: boolean | null;
+    specialist_name?: string | null;
+    specialist_accepted_at?: string | null;
+    specialist_completed_at?: string | null;
+    case_created_at?: string | null;
+    diagnosis?: {
+      diagnosis_name?: string | null;
+      severity?: string | null;
+      specialist_notes?: string | null;
+      created_at?: string | null;
+    } | null;
+    treatment?: {
+      treatment_title?: string | null;
+      medications?: string | null;
+      inhaler_therapy?: string | null;
+      oxygen_therapy?: string | null;
+      pulmonary_rehabilitation?: string | null;
+      lifestyle_recommendations?: string | null;
+      referral_recommendation?: string | null;
+      created_at?: string | null;
+    } | null;
+    prescriptions?: {
+      id: string;
+      medication: string | null;
+      dosage: string | null;
+      frequency: string | null;
+      duration: string | null;
+      instructions: string | null;
+    }[];
+    followup?: {
+      scheduled_date?: string | null;
+      notes?: string | null;
+      diagnostic_procedures?: string[] | null;
+      created_at?: string | null;
+    } | null;
+    specialist_report?: {
+      specialist_name: string | null;
+      diagnosis:
+        | {
+            primary_diagnosis: string | null;
+            severity: string | null;
+            clinical_notes: string | null;
+            created_at: string | null;
+          }
+        | null;
+      treatment:
+        | {
+            medications: string | null;
+            inhaler_therapy: string | null;
+            oxygen_therapy: boolean | null;
+            pulmonary_rehabilitation: string | null;
+            lifestyle_recommendations: string | null;
+            referral_recommendation: string | null;
+            created_at: string | null;
+          }
+        | null;
+      prescriptions: {
+        id: string;
+        medication: string | null;
+        dosage: string | null;
+        frequency: string | null;
+        duration: string | null;
+        instructions: string | null;
+      }[];
+      followup:
+        | {
+            followup_date: string | null;
+            created_at: string | null;
+            diagnostic_procedures: string[] | null;
+          }
+        | null;
+      timeline: {
+        case_created_at: string | null;
+        specialist_accepted_at: string | null;
+        diagnosis_submitted_at: string | null;
+        treatment_generated_at: string | null;
+        followup_scheduled_at: string | null;
+        case_finalized_at: string | null;
+      };
+      specialist_accepted_at: string | null;
+      specialist_completed_at: string | null;
+      case_created_at: string | null;
+    } | null;
+  } | null>(null);
+  const [pastCaseLoading, setPastCaseLoading] = useState(false);
+  const [emergencyCaseMap, setEmergencyCaseMap] = useState<Record<string, boolean>>({});
+  const [waitingCaseClinicalDetail, setWaitingCaseClinicalDetail] = useState<{
+    specialist_name?: string | null;
+    diagnosis?: {
+      diagnosis_name?: string | null;
+      severity?: string | null;
+      specialist_notes?: string | null;
+      created_at?: string | null;
+    } | null;
+    treatment?: {
+      medications?: string | null;
+      inhaler_therapy?: string | null;
+      oxygen_therapy?: boolean | null;
+      pulmonary_rehabilitation?: string | null;
+      lifestyle_recommendations?: string | null;
+      referral_recommendation?: string | null;
+      created_at?: string | null;
+    } | null;
+    prescriptions?: {
+      id: string;
+      medication: string | null;
+      dosage: string | null;
+      frequency: string | null;
+      duration: string | null;
+      instructions: string | null;
+    }[];
+    followup?: {
+      followup_date?: string | null;
+      created_at?: string | null;
+      diagnostic_procedures?: string[];
+    } | null;
+    timeline?: {
+      case_created_at?: string | null;
+      specialist_accepted_at?: string | null;
+      diagnosis_submitted_at?: string | null;
+      treatment_generated_at?: string | null;
+      followup_scheduled_at?: string | null;
+      case_finalized_at?: string | null;
+    };
+  } | null>(null);
+  const [waitingReport, setWaitingReport] = useState<{
+    diagnosis?: Record<string, unknown> | null;
+    treatment?: Record<string, unknown> | null;
+    prescriptions?: Record<string, unknown>[];
+    followup?: Record<string, unknown> | null;
+    furtherDiagnostics?: string[];
   } | null>(null);
   const [finalizing, setFinalizing] = useState(false);
+  const [caseResolved, setCaseResolved] = useState(false);
+  const completedNoticeRef = useRef<string | null>(null);
 
   const [patientForm, setPatientForm] = useState({
     name: "",
@@ -108,6 +278,9 @@ export default function RuralDashboardPage() {
   const [vitalsForm, setVitalsForm] = useState({
     spo2: "",
     respiratory_rate: "",
+    systolic_bp: "",
+    diastolic_bp: "",
+    temperature: "",
   });
 
   const [spirometryForm, setSpirometryForm] = useState({
@@ -125,10 +298,11 @@ export default function RuralDashboardPage() {
   const [xrayPath, setXrayPath] = useState<string | null>(null);
 
   const [ruralDiagnosisReport, setRuralDiagnosisReport] = useState("");
-  const [view, setView] = useState<"main" | "new_case" | "past_cases" | "waiting" | "case_detail">("main");
+  const [view, setView] = useState<"main" | "new_case" | "in_progress" | "past_cases" | "waiting" | "case_detail">("main");
   const [currentStep, setCurrentStep] = useState(1);
   const [pastCasesSearch, setPastCasesSearch] = useState("");
   const [pastCasesFilter, setPastCasesFilter] = useState<"All Cases" | "Emergency" | "Normal" | "Completed">("All Cases");
+  const [inProgressCases, setInProgressCases] = useState<InProgressCaseOption[]>([]);
   const steps = [
     { title: "Patient Details" },
     { title: "Vitals & Spirometry" },
@@ -136,11 +310,6 @@ export default function RuralDashboardPage() {
     { title: "Diagnosis & Request" },
     { title: "Select Specialist" },
   ];
-
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    setReady(true);
-  }, []);
 
   const [showSpecialistModal, setShowSpecialistModal] = useState(false);
   const [specialists, setSpecialists] = useState<{ id: string; full_name: string | null }[]>([]);
@@ -166,6 +335,7 @@ export default function RuralDashboardPage() {
     setWaitingCaseId(null);
     setViewingCaseId(null);
     setCaseDetail(null);
+    setWaitingCaseClinicalDetail(null);
     setPatientForm({
       name: "",
       phone_number: "",
@@ -177,7 +347,7 @@ export default function RuralDashboardPage() {
       diagnosis_date: "",
       consent_given: false,
     });
-    setVitalsForm({ spo2: "", respiratory_rate: "" });
+    setVitalsForm({ spo2: "", respiratory_rate: "", systolic_bp: "", diastolic_bp: "", temperature: "" });
     setSpirometryForm({ fvc: "", fev1: "", fev1_fvc: "", fev1_fev6: "", pef: "" });
     setXrayFile(null);
     setRuralDiagnosisReport("");
@@ -281,6 +451,9 @@ export default function RuralDashboardPage() {
       patient_id: patientId,
       spo2: vitalsForm.spo2 ? Number(vitalsForm.spo2) : null,
       respiratory_rate: vitalsForm.respiratory_rate ? Number(vitalsForm.respiratory_rate) : null,
+      systolic_bp: vitalsForm.systolic_bp ? Number(vitalsForm.systolic_bp) : null,
+      diastolic_bp: vitalsForm.diastolic_bp ? Number(vitalsForm.diastolic_bp) : null,
+      temperature_f: vitalsForm.temperature ? Number(vitalsForm.temperature) : null,
     });
 
     if (vitalsError) {
@@ -305,6 +478,7 @@ export default function RuralDashboardPage() {
       return;
     }
 
+    setVitalsForm((prev) => ({ ...prev, systolic_bp: "", diastolic_bp: "", temperature: "" }));
     setVitalsSaved(true);
     setStatusMessage("Vitals and spirometry saved. You can now upload X-ray and submit case.");
   };
@@ -389,7 +563,6 @@ export default function RuralDashboardPage() {
     setPendingPriority(null);
     setRuralMessage("");
     setErrorMessage(null);
-    setShowSpecialistModal(true);
     const { data } = await supabase
       .from("profiles")
       .select("id, full_name")
@@ -461,7 +634,11 @@ export default function RuralDashboardPage() {
     setRuralMessage("");
     setCaseSubmitted(true);
     setCurrentCaseId(caseRow.id);
+    setWaitingRequest(null);
+    setWaitingReport(null);
+    setWaitingCaseClinicalDetail(null);
     setWaitingCaseId(caseRow.id);
+    setCaseResolved(false);
     setView("waiting");
   };
 
@@ -513,6 +690,7 @@ export default function RuralDashboardPage() {
     const { data: userResult } = await supabase.auth.getUser();
     if (!userResult.user) {
       setPastCasesList([]);
+      setEmergencyCaseMap({});
       return;
     }
     const { data } = await supabase
@@ -531,9 +709,59 @@ export default function RuralDashboardPage() {
       .order("created_at", { ascending: false });
     if (!data) {
       setPastCasesList([]);
+      setEmergencyCaseMap({});
       return;
     }
     setPastCasesList(data as CaseOption[]);
+    const caseIds = (data as CaseOption[]).map((row) => row.id);
+    if (caseIds.length === 0) {
+      setEmergencyCaseMap({});
+      return;
+    }
+    const { data: reqRows } = await supabase
+      .from("specialist_requests")
+      .select("case_id, priority")
+      .in("case_id", caseIds);
+    const map: Record<string, boolean> = {};
+    (reqRows ?? []).forEach((row) => {
+      const parsed = row as { case_id?: string; priority?: string | null };
+      if (parsed.case_id) {
+        map[parsed.case_id] = parsed.priority === "emergency";
+      }
+    });
+    setEmergencyCaseMap(map);
+  };
+
+  const fetchInProgressCases = async () => {
+    const { data: userResult } = await supabase.auth.getUser();
+    if (!userResult.user) {
+      setInProgressCases([]);
+      return;
+    }
+
+    const { data } = await supabase
+      .from("cases")
+      .select(
+        `
+          id,
+          status,
+          created_at,
+          patient:patients (
+            name
+          ),
+          specialist_requests (
+            status,
+            specialist:profiles (
+              full_name
+            )
+          )
+        `
+      )
+      .eq("rural_doctor_id", userResult.user.id)
+      .neq("status", "finalized")
+      .order("created_at", { ascending: false });
+
+    setInProgressCases((data ?? []) as InProgressCaseOption[]);
   };
 
   const fetchActiveCase = async () => {
@@ -544,7 +772,7 @@ export default function RuralDashboardPage() {
       .from("cases")
       .select("id,status")
       .eq("rural_doctor_id", userResult.user.id)
-      .in("status", ["pending", "accepted", "completed"])
+      .in("status", ["pending", "accepted", "reviewing", "completed"])
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -552,8 +780,107 @@ export default function RuralDashboardPage() {
 
     if (activeCase?.id) {
       setWaitingCaseId(activeCase.id);
-      setView("waiting");
     }
+  };
+
+  const loadCase = async () => {
+    setCaseResolved(false);
+    await fetchActiveCase();
+    await fetchInProgressCases();
+    await fetchPastCases();
+    setCaseResolved(true);
+  };
+
+  const refetchCase = async () => {
+    await loadCase();
+  };
+
+  const loadClinicalPanelsForCase = async (caseId: string, caseStatus?: string | null) => {
+    if (caseStatus !== "completed" && caseStatus !== "finalized") {
+      return null;
+    }
+    const [{ data: diagnosisRows }, { data: treatmentRows }, { data: prescriptionRows }, { data: followupRows }, { data: caseMetaRows }, { data: reqRows }] =
+      await Promise.all([
+        supabase.from("case_diagnoses").select("diagnosis_name, severity, specialist_notes, created_at").eq("case_id", caseId).order("created_at", { ascending: false }).limit(1),
+        supabase.from("case_treatment_plans").select("medications, inhaler_therapy, oxygen_therapy, pulmonary_rehabilitation, lifestyle_recommendations, referral_recommendation, created_at").eq("case_id", caseId).order("created_at", { ascending: false }).limit(1),
+        supabase.from("prescriptions").select("medication_name, dosage, frequency, duration_days, instructions").eq("case_id", caseId).order("created_at", { ascending: true }),
+        supabase.from("followups").select("scheduled_date, diagnostic_procedures, created_at").eq("case_id", caseId).order("created_at", { ascending: false }).limit(1),
+        supabase.from("cases").select("created_at").eq("id", caseId).limit(1),
+        supabase.from("specialist_requests").select("accepted_at, completed_at, specialist_id").eq("case_id", caseId).limit(1),
+      ]);
+
+    const req = (reqRows?.[0] ?? null) as { accepted_at?: string | null; completed_at?: string | null; specialist_id?: string | null } | null;
+    let specialistName: string | null = null;
+    if (req?.specialist_id) {
+      const { data: specialistRows } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", req.specialist_id)
+        .limit(1);
+      specialistName = (specialistRows?.[0] as { full_name?: string | null } | undefined)?.full_name ?? null;
+    }
+
+    const diagnosis = (diagnosisRows?.[0] ?? null) as Record<string, unknown> | null;
+    const treatment = (treatmentRows?.[0] ?? null) as Record<string, unknown> | null;
+    const followup = (followupRows?.[0] ?? null) as Record<string, unknown> | null;
+    const caseMeta = (caseMetaRows?.[0] ?? null) as { created_at?: string | null } | null;
+    const prescriptions = (prescriptionRows ?? []) as Record<string, unknown>[];
+
+    const diagnosticsValue = followup?.diagnostic_procedures;
+    const diagnosticProcedures = Array.isArray(diagnosticsValue)
+      ? diagnosticsValue.map((item) => String(item)).filter(Boolean)
+      : typeof diagnosticsValue === "string"
+        ? diagnosticsValue.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean)
+        : [];
+
+    return {
+      specialist_name: specialistName,
+      diagnosis: diagnosis
+        ? {
+            primary_diagnosis: (diagnosis.diagnosis_name as string | undefined) ?? null,
+            severity: (diagnosis.severity as string | undefined) ?? null,
+            clinical_notes: (diagnosis.specialist_notes as string | undefined) ?? null,
+            created_at: (diagnosis.created_at as string | undefined) ?? null,
+          }
+        : null,
+      treatment: treatment
+        ? {
+            medications: (treatment.medications as string | undefined) ?? null,
+            inhaler_therapy: (treatment.inhaler_therapy as string | undefined) ?? null,
+            oxygen_therapy: (treatment.oxygen_therapy as boolean | undefined) ?? null,
+            pulmonary_rehab: (treatment.pulmonary_rehabilitation as string | undefined) ?? null,
+            lifestyle_advice: (treatment.lifestyle_recommendations as string | undefined) ?? null,
+            referral_recommendation: (treatment.referral_recommendation as string | undefined) ?? null,
+            created_at: (treatment.created_at as string | undefined) ?? null,
+          }
+        : null,
+      prescriptions: prescriptions.map((row, index) => ({
+        id: String((row.id as string | number | undefined) ?? `rx-${index}`),
+        medication: (row.medication_name as string | undefined) ?? null,
+        dosage: (row.dosage as string | undefined) ?? null,
+        frequency: (row.frequency as string | undefined) ?? (row.instructions as string | undefined) ?? null,
+        duration: (row.duration_days as string | number | undefined) != null ? String(row.duration_days) : null,
+        instructions: (row.instructions as string | undefined) ?? null,
+      })),
+      followup: followup
+        ? {
+            followup_date: (followup.scheduled_date as string | undefined) ?? null,
+            created_at: (followup.created_at as string | undefined) ?? null,
+            diagnostic_procedures: diagnosticProcedures,
+          }
+        : null,
+      timeline: {
+        case_created_at: caseMeta?.created_at ?? null,
+        specialist_accepted_at: req?.accepted_at ?? null,
+        diagnosis_submitted_at: (diagnosis?.created_at as string | undefined) ?? null,
+        treatment_generated_at: (treatment?.created_at as string | undefined) ?? null,
+        followup_scheduled_at: (followup?.created_at as string | undefined) ?? null,
+        case_finalized_at: caseStatus === "finalized" ? req?.completed_at ?? null : null,
+      },
+      specialist_accepted_at: req?.accepted_at ?? null,
+      specialist_completed_at: req?.completed_at ?? null,
+      case_created_at: caseMeta?.created_at ?? null,
+    };
   };
 
   useEffect(() => {
@@ -562,67 +889,132 @@ export default function RuralDashboardPage() {
   }, [view]);
 
   useEffect(() => {
+    if (view !== "in_progress") return;
+    fetchInProgressCases();
+  }, [view]);
+
+  useEffect(() => {
     const loadBase = async () => {
-      await fetchActiveCase();
-      await fetchPastCases();
+      await loadCase();
     };
     loadBase();
   }, []);
 
   useEffect(() => {
-    if (!waitingCaseId) {
-      setWaitingRequest(null);
-      return;
-    }
-    let interval: NodeJS.Timeout;
-    const fetchRequest = async () => {
-      const { data: request } = await supabase
-        .from("specialist_requests")
-        .select("id, status, specialist_message, accepted_at, completed_at")
-        .eq("case_id", waitingCaseId)
-        .single();
-      if (!request) {
-        setWaitingRequest(null);
-        return;
-      }
-      const { data: caseRows } = await supabase
-        .from("cases")
-        .select("specialist_diagnosis_report, status")
-        .eq("id", waitingCaseId)
-        .limit(1);
-      const caseRow = caseRows?.[0] as
-        | { specialist_diagnosis_report?: string | null; status?: string | null }
-        | undefined;
-      if (!caseRow) {
-        console.error("Waiting case lookup returned empty", waitingCaseId);
-      }
-      setWaitingRequest({
-        specialist_name: null,
-        rural_message: null,
-        specialist_message: (request as { specialist_message?: string | null })?.specialist_message ?? null,
-        specialist_diagnosis_report: caseRow?.specialist_diagnosis_report ?? null,
-        case_status: caseRow?.status ?? null,
-        status: (request as { status?: string | null })?.status ?? null,
-        accepted_at: (request as { accepted_at?: string | null })?.accepted_at ?? null,
-        completed_at: (request as { completed_at?: string | null })?.completed_at ?? null,
-      });
-    };
-    fetchRequest();
-    interval = setInterval(fetchRequest, 3000);
     const channel = supabase
-      .channel(`case-updates-${waitingCaseId}`)
+      .channel("case-updates")
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "cases",
-          filter: `id=eq.${waitingCaseId}`,
-        },
+        { event: "*", schema: "public", table: "cases" },
         () => {
-          fetchRequest();
+          refetchCase();
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "case_diagnoses" },
+        () => {
+          refetchCase();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "case_treatment_plans" },
+        () => {
+          refetchCase();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "prescriptions" },
+        () => {
+          refetchCase();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "followups" },
+        () => {
+          refetchCase();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (view !== "waiting" || !waitingCaseId) return;
+    completedNoticeRef.current = null;
+    let interval: NodeJS.Timeout;
+    const fetchRequest = async () => {
+      setCaseResolved(false);
+      try {
+        const { data: request } = await supabase
+          .from("specialist_requests")
+          .select("id, status, specialist_message, accepted_at, completed_at")
+          .eq("case_id", waitingCaseId)
+          .maybeSingle();
+        if (!request) {
+          setWaitingRequest(null);
+          setWaitingReport(null);
+          return;
+        }
+        const { data: caseRows } = await supabase
+          .from("cases")
+          .select("id") // status intentionally not used; lifecycle sourced from specialist_requests
+          .eq("id", waitingCaseId)
+          .limit(1);
+        const caseRow = caseRows?.[0];
+        if (!caseRow) {
+          console.error("Waiting case lookup returned empty", waitingCaseId);
+        }
+        const [diagnosisRes, treatmentRes, prescriptionRes, followupRes] = await Promise.all([
+          supabase.from("case_diagnoses").select("diagnosis_name, severity, specialist_notes").eq("case_id", waitingCaseId).single(),
+          supabase.from("case_treatment_plans").select("treatment_title, medications, inhaler_therapy, oxygen_therapy, pulmonary_rehabilitation, lifestyle_recommendations, referral_recommendation").eq("case_id", waitingCaseId).single(),
+          supabase.from("prescriptions").select("medication_name, dosage, frequency, duration_days, instructions").eq("case_id", waitingCaseId),
+          supabase.from("followups").select("scheduled_date, notes, diagnostic_procedures").eq("case_id", waitingCaseId).single(),
+        ]);
+        const diagnosticsValue = (followupRes.data as { diagnostic_procedures?: unknown } | null)?.diagnostic_procedures;
+        const furtherDiagnostics = Array.isArray(diagnosticsValue)
+          ? diagnosticsValue.map((item) => String(item)).filter(Boolean)
+          : typeof diagnosticsValue === "string"
+            ? diagnosticsValue.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean)
+            : [];
+        setWaitingReport({
+          diagnosis: diagnosisRes.data ?? null,
+          treatment: treatmentRes.data ?? null,
+          prescriptions: prescriptionRes.data ?? [],
+          followup: followupRes.data ?? null,
+          furtherDiagnostics,
+        });
+        const completedAt = (request as { completed_at?: string | null })?.completed_at ?? null;
+        const detail = await loadClinicalPanelsForCase(
+          waitingCaseId,
+          completedAt ? "completed" : null
+        );
+        setWaitingRequest({
+          specialist_name: null,
+          rural_message: null,
+          specialist_message: (request as { specialist_message?: string | null })?.specialist_message ?? null,
+          accepted_at: (request as { accepted_at?: string | null })?.accepted_at ?? null,
+          completed_at: (request as { completed_at?: string | null })?.completed_at ?? null,
+        });
+        setWaitingCaseClinicalDetail(detail);
+        if (completedAt && view !== "waiting" && completedNoticeRef.current !== waitingCaseId) {
+          setStatusMessage("Specialist has completed the case");
+          completedNoticeRef.current = waitingCaseId;
+        }
+      } finally {
+        setCaseResolved(true);
+      }
+    };
+    fetchRequest();
+    interval = setInterval(fetchRequest, 5000);
+    const channel = supabase
+      .channel(`case-updates-${waitingCaseId}`)
       .on(
         "postgres_changes",
         {
@@ -635,12 +1027,25 @@ export default function RuralDashboardPage() {
           fetchRequest();
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "cases",
+          filter: `id=eq.${waitingCaseId}`,
+        },
+        () => {
+          fetchRequest();
+        }
+      )
       .subscribe();
     return () => {
       clearInterval(interval);
+      setWaitingReport(null);
       supabase.removeChannel(channel);
     };
-  }, [waitingCaseId]);
+  }, [view, waitingCaseId]);
 
   useEffect(() => {
     if (view !== "case_detail" || !viewingCaseId) {
@@ -648,97 +1053,161 @@ export default function RuralDashboardPage() {
       return;
     }
     const fetchDetail = async () => {
-      const { data: caseRows } = await supabase
-        .from("cases")
-        .select(
-          "patient_id, rural_diagnosis_report, specialist_diagnosis_report, follow_up_notes, status, ct_scan_required, bronchoscopy_required"
-        )
-        .eq("id", viewingCaseId)
-        .limit(1);
-      const c = caseRows?.[0] as
-        | {
-            patient_id: string;
-            rural_diagnosis_report?: string | null;
-            specialist_diagnosis_report?: string | null;
-            follow_up_notes?: string | null;
-            status?: string | null;
-            ct_scan_required?: boolean | null;
-            bronchoscopy_required?: boolean | null;
-          }
-        | undefined;
-      if (!c) {
-        console.error("Case detail lookup returned empty", viewingCaseId);
-        return;
+      setPastCaseLoading(true);
+      try {
+        const { data: caseRows } = await supabase
+          .from("cases")
+          .select("id, patient_id, specialist_id, created_at, status, rural_diagnosis_report")
+          .eq("id", viewingCaseId)
+          .limit(1);
+        const c = caseRows?.[0] as { id?: string; patient_id: string; specialist_id?: string | null; created_at?: string | null; status?: string | null; rural_diagnosis_report?: string | null } | undefined;
+        if (!c) {
+          console.error("Case detail lookup returned empty", viewingCaseId);
+          setCaseDetail(null);
+          return;
+        }
+        const caseId = c.id ?? viewingCaseId;
+        const patientId = c.patient_id;
+        const { data: diagnosisRows } = await supabase
+          .from("case_diagnoses")
+          .select("diagnosis_name, severity, specialist_notes, created_at")
+          .eq("case_id", caseId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const diagnosis = diagnosisRows?.[0] ?? null;
+
+        const { data: treatmentRows } = await supabase
+          .from("case_treatment_plans")
+          .select("medications, inhaler_therapy, oxygen_therapy, pulmonary_rehabilitation, lifestyle_recommendations, referral_recommendation, created_at")
+          .eq("case_id", caseId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const treatment = treatmentRows?.[0] ?? null;
+
+        const { data: prescriptions } = await supabase
+          .from("prescriptions")
+          .select("medication_name, dosage, frequency, duration_days, instructions")
+          .eq("case_id", caseId)
+          .order("created_at", { ascending: true });
+
+        const { data: followupRows } = await supabase
+          .from("followups")
+          .select("scheduled_date, notes, diagnostic_procedures, created_at")
+          .eq("case_id", caseId);
+        const followup = followupRows?.[0] ?? null;
+        const diagnosticsValue = (followup as { diagnostic_procedures?: unknown } | null)?.diagnostic_procedures;
+        const furtherDiagnostics = Array.isArray(diagnosticsValue)
+          ? diagnosticsValue.map((item) => String(item)).filter(Boolean)
+          : typeof diagnosticsValue === "string"
+            ? diagnosticsValue.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean)
+            : [];
+
+        const [
+          patientRes,
+          vitalsRes,
+          spirometryRes,
+          xrayRes,
+          specialistRes,
+        ] = await Promise.all([
+          supabase.from("patients").select("name, generated_patient_id, age, gender, height_cm, weight_kg, smoking_history").eq("id", patientId).single(),
+          supabase.from("vitals").select("spo2, respiratory_rate, systolic_bp, diastolic_bp, temperature_f, created_at").eq("patient_id", patientId).order("created_at", { ascending: false }).limit(1),
+          supabase.from("spirometry").select("*").eq("patient_id", patientId).order("created_at", { ascending: false }).limit(1),
+          supabase.from("xrays").select("file_path, created_at").eq("patient_id", patientId).order("created_at", { ascending: false }).limit(1),
+          c.specialist_id ? supabase.from("profiles").select("full_name").eq("id", c.specialist_id).single() : Promise.resolve({ data: null }),
+        ]);
+        const p = patientRes.data as { name?: string; generated_patient_id?: string | null; age?: number | null; gender?: string | null; height_cm?: number | null; weight_kg?: number | null; smoking_history?: string | null } | null;
+        const v = vitalsRes.data;
+        const s = spirometryRes.data;
+        const x = xrayRes.data;
+        const clinicalPanels = await loadClinicalPanelsForCase(viewingCaseId, (c as { status?: string | null }).status ?? null);
+        const specialistNameFromCase = (specialistRes as { data?: { full_name?: string | null } | null })?.data?.full_name ?? null;
+        setCaseDetail({
+          patient: p
+            ? {
+                name: p.name,
+                generated_patient_id: p.generated_patient_id ?? null,
+                age: p.age ?? null,
+                gender: p.gender ?? null,
+                height_cm: p.height_cm ?? null,
+                weight_kg: p.weight_kg ?? null,
+                smoking_history: p.smoking_history ?? null,
+              }
+            : undefined,
+          vitals: (v?.[0] as { spo2?: number | null; respiratory_rate?: number | null; created_at?: string | null }) ?? null,
+          spirometry:
+            (s?.[0] as {
+              fvc?: number | null;
+              fev1?: number | null;
+              fev1_fvc?: number | null;
+              fev1_fev6?: number | null;
+              pef?: number | null;
+              created_at?: string | null;
+            }) ?? null,
+          xrays: (x ?? []).map((r) => ({ path: (r as { file_path: string }).file_path })),
+          rural_diagnosis: c.rural_diagnosis_report ?? null,
+          finalized_report: null,
+          case_status: c.status ?? null,
+          specialist_name: specialistNameFromCase ?? clinicalPanels?.specialist_name ?? null,
+          specialist_accepted_at: clinicalPanels?.specialist_accepted_at ?? null,
+          specialist_completed_at: clinicalPanels?.specialist_completed_at ?? null,
+          case_created_at: c.created_at ?? clinicalPanels?.case_created_at ?? null,
+          diagnosis: (diagnosis as { diagnosis_name?: string | null; severity?: string | null; specialist_notes?: string | null; created_at?: string | null } | null)
+            ? {
+                diagnosis_name: (diagnosis as { diagnosis_name?: string | null }).diagnosis_name ?? null,
+                severity: (diagnosis as { severity?: string | null }).severity ?? null,
+                specialist_notes: (diagnosis as { specialist_notes?: string | null }).specialist_notes ?? null,
+                created_at: (diagnosis as { created_at?: string | null }).created_at ?? null,
+              }
+            : null,
+          treatment: (treatment as { medications?: string | null; inhaler_therapy?: string | null; oxygen_therapy?: boolean | null; pulmonary_rehabilitation?: string | null; lifestyle_recommendations?: string | null; referral_recommendation?: string | null; created_at?: string | null } | null)
+            ? {
+                treatment_title: null,
+                medications: (treatment as { medications?: string | null }).medications ?? null,
+                inhaler_therapy: (treatment as { inhaler_therapy?: string | null }).inhaler_therapy ?? null,
+                oxygen_therapy: (treatment as { oxygen_therapy?: boolean | null }).oxygen_therapy ?? null,
+                pulmonary_rehabilitation: (treatment as { pulmonary_rehabilitation?: string | null }).pulmonary_rehabilitation ?? null,
+                lifestyle_recommendations: (treatment as { lifestyle_recommendations?: string | null }).lifestyle_recommendations ?? null,
+                referral_recommendation: (treatment as { referral_recommendation?: string | null }).referral_recommendation ?? null,
+                created_at: (treatment as { created_at?: string | null }).created_at ?? null,
+              }
+            : null,
+          prescriptions:
+            (prescriptions as { medication_name?: string | null; dosage?: string | null; frequency?: string | null; duration_days?: string | number | null; instructions?: string | null }[] | null)?.map((row, idx) => ({
+              id: `rx-${idx}`,
+              medication: row.medication_name ?? null,
+              dosage: row.dosage ?? null,
+              frequency: row.frequency ?? row.instructions ?? null,
+              duration: row.duration_days != null ? String(row.duration_days) : null,
+              instructions: row.instructions ?? null,
+            })) ?? [],
+          followup: (followup as { scheduled_date?: string | null; notes?: string | null; diagnostic_procedures?: string[] | null; created_at?: string | null } | null)
+            ? {
+                scheduled_date: (followup as { scheduled_date?: string | null }).scheduled_date ?? null,
+                notes: (followup as { notes?: string | null }).notes ?? null,
+                diagnostic_procedures: furtherDiagnostics,
+                created_at: (followup as { created_at?: string | null }).created_at ?? null,
+              }
+            : null,
+          specialist_report: clinicalPanels ?? null,
+        });
+      } finally {
+        setPastCaseLoading(false);
       }
-      const { data: patientRows } = await supabase
-        .from("patients")
-        .select("name, generated_patient_id, age, gender, height_cm, weight_kg, smoking_history")
-        .eq("id", (c as { patient_id: string }).patient_id)
-        .limit(1);
-      const p = patientRows?.[0] as
-        | (Record<string, string | number | null> & { name?: string })
-        | undefined;
-      if (!p) {
-        console.error("Case detail patient lookup returned empty", (c as { patient_id: string }).patient_id);
-      }
-      const { data: v } = await supabase
-        .from("vitals")
-        .select("*")
-        .eq("patient_id", (c as { patient_id: string }).patient_id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const { data: s } = await supabase
-        .from("spirometry")
-        .select("*")
-        .eq("patient_id", (c as { patient_id: string }).patient_id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const { data: x } = await supabase
-        .from("xrays")
-        .select("file_path")
-        .eq("patient_id", (c as { patient_id: string }).patient_id);
-      setCaseDetail({
-        patient: p
-          ? {
-              name: (p as { name?: string }).name,
-              generated_patient_id: p.generated_patient_id !== null && p.generated_patient_id !== undefined ? String(p.generated_patient_id) : null,
-              age: (p as { age?: number | null } | undefined)?.age ?? null,
-              gender: (p as { gender?: string | null } | undefined)?.gender ?? null,
-              height_cm: (p as { height_cm?: number | null } | undefined)?.height_cm ?? null,
-              weight_kg: (p as { weight_kg?: number | null } | undefined)?.weight_kg ?? null,
-              smoking_history: (p as { smoking_history?: string | null } | undefined)?.smoking_history ?? null,
-            }
-          : undefined,
-        vitals: (v?.[0] as { spo2?: number | null; respiratory_rate?: number | null; created_at?: string | null }) ?? null,
-        spirometry:
-          (s?.[0] as {
-            fvc?: number | null;
-            fev1?: number | null;
-            fev1_fvc?: number | null;
-            fev1_fev6?: number | null;
-            pef?: number | null;
-            created_at?: string | null;
-          }) ?? null,
-        xrays: (x ?? []).map((r) => ({ path: (r as { file_path: string }).file_path })),
-        rural_diagnosis: (c as { rural_diagnosis_report?: string | null }).rural_diagnosis_report,
-        specialist_diagnosis: (c as { specialist_diagnosis_report?: string | null }).specialist_diagnosis_report,
-        finalized_report: null,
-        follow_up_notes: (c as { follow_up_notes?: string | null }).follow_up_notes ?? null,
-        case_status: (c as { status?: string | null }).status ?? null,
-        ct_scan_required: (c as { ct_scan_required?: boolean | null }).ct_scan_required ?? null,
-        bronchoscopy_required: (c as { bronchoscopy_required?: boolean | null }).bronchoscopy_required ?? null,
-      });
     };
     fetchDetail();
   }, [view, viewingCaseId]);
 
-  const waitingStatus = waitingRequest
-    ? waitingRequest.completed_at
-      ? "completed"
-      : waitingRequest.accepted_at
-      ? "accepted"
-      : "pending"
-    : null;
+  type WaitingStatus = "pending" | "accepted" | "completed" | null;
+  const waitingStatus: WaitingStatus =
+    caseResolved
+      ? waitingRequest?.completed_at
+        ? "completed"
+        : waitingRequest?.accepted_at
+          ? "accepted"
+          : waitingRequest
+            ? "pending"
+            : null
+      : null;
 
   const filteredPastCases = pastCasesList.filter((c) => {
     const patientCode = Array.isArray(c.patient) ? c.patient[0]?.generated_patient_id ?? "" : c.patient?.generated_patient_id ?? "";
@@ -753,11 +1222,13 @@ export default function RuralDashboardPage() {
   });
 
   const doctorName = doctorProfile?.full_name ?? "Doctor";
+  const isEmergencyViewingCase = viewingCaseId ? Boolean(emergencyCaseMap[viewingCaseId]) : false;
   const handleOpenNewCase = () => {
     resetCaseState();
     setCurrentStep(1);
     setView("new_case");
   };
+  const handleOpenInProgressCases = () => setView("in_progress");
   const handleOpenPastCases = () => setView("past_cases");
   const floatingIcons = [
     { Icon: HeartPulse, className: "top-[8%] left-[8%]", delay: "0s" },
@@ -768,16 +1239,8 @@ export default function RuralDashboardPage() {
     { Icon: Wind, className: "top-[52%] right-[28%]", delay: "5.4s" },
   ] as const;
 
-  if (!ready) {
-    return (
-      <div className="p-6 text-slate-400">
-        Loading dashboard...
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 text-slate-900">
+    <div className="flex min-h-screen will-change-auto bg-gradient-to-br from-blue-50 to-blue-100 text-slate-900">
       <aside className="hidden w-64 min-h-screen flex-col justify-between rounded-r-3xl bg-gradient-to-b from-blue-600 to-blue-500 p-6 text-white shadow-xl md:fixed md:left-0 md:top-0 md:flex">
         <div className="space-y-8">
           <h1 className="text-xl font-semibold tracking-wide">Tele-Pulmonology</h1>
@@ -794,6 +1257,18 @@ export default function RuralDashboardPage() {
             >
               <PlusCircle className="h-4 w-4" />
               <span>New Cases</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenInProgressCases}
+              className={`flex w-full items-center gap-3 rounded-xl bg-white/20 px-4 py-3 backdrop-blur-md border border-white/20 hover:bg-white/30 transition ${
+                view === "in_progress" || view === "waiting"
+                  ? "ring-2 ring-white/40"
+                  : ""
+              }`}
+            >
+              <Activity className="h-4 w-4" />
+              <span>In Progress</span>
             </button>
             <button
               type="button"
@@ -843,7 +1318,7 @@ export default function RuralDashboardPage() {
                 <span className="text-sm">Logout</span>
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={handleOpenNewCase}
@@ -855,6 +1330,18 @@ export default function RuralDashboardPage() {
               >
                 <PlusCircle className="h-4 w-4" />
                 <span className="text-sm">New Cases</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenInProgressCases}
+                className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2 transition ${
+                  view === "in_progress" || view === "waiting"
+                    ? "bg-blue-500/20 text-blue-600 dark:text-blue-400"
+                    : "bg-blue-500/10 text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                <Activity className="h-4 w-4" />
+                <span className="text-sm">In Progress</span>
               </button>
               <button
                 type="button"
@@ -900,15 +1387,76 @@ export default function RuralDashboardPage() {
           </div>
         )}
 
+      {view === "in_progress" && (
+        <div className="max-w-6xl mx-auto p-8">
+          <h1 className="mb-6 text-2xl font-semibold">In Progress Cases</h1>
+          <div className="space-y-4">
+            {inProgressCases.length === 0 ? (
+              <div className="py-20 text-center text-gray-500">No in-progress cases available.</div>
+            ) : (
+              inProgressCases.map((caseItem, index) => {
+                const patientName = Array.isArray(caseItem.patient)
+                  ? caseItem.patient[0]?.name ?? "Unknown Patient"
+                  : caseItem.patient?.name ?? "Unknown Patient";
+                const status = caseItem.status;
+                const statusBadgeClass =
+                  status === "pending"
+                    ? "bg-amber-100 text-amber-700"
+                    : status === "accepted"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-green-100 text-green-700";
+                return (
+                  <div
+                    key={caseItem.id}
+                    className="flex items-center justify-between rounded-xl border border-white/30 bg-white/40 p-6 shadow-md backdrop-blur-lg"
+                  >
+                    <div>
+                      <p className="text-sm text-gray-500">Case #{index + 1}</p>
+                      <h2 className="text-lg font-semibold">{patientName}</h2>
+                      <p className="text-sm text-gray-600">
+                        Created {caseItem.created_at ? new Date(caseItem.created_at).toLocaleDateString() : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className={`rounded-full px-3 py-1 text-sm font-medium capitalize ${statusBadgeClass}`}>
+                        {status}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWaitingCaseId(caseItem.id);
+                        setView("waiting");
+                      }}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
       {view === "waiting" && (
         <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-200 via-blue-300 to-blue-400 animate-pulse opacity-60"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-200 via-blue-300 to-blue-400 opacity-60"></div>
           <div className="relative z-10">
             <div className="w-[650px] rounded-2xl border border-white/30 bg-white/40 p-10 text-center shadow-2xl backdrop-blur-xl">
-              {!waitingRequest || waitingStatus === "pending" ? (
-                <>
-                  <p className="text-sm font-medium text-gray-600">Waiting for the specialist</p>
-                  <h2 className="mt-3 text-2xl font-semibold">Dr. {waitingRequest?.specialist_name ?? "Specialist"}</h2>
+            {waitingStatus === null && (
+              <>
+                <h2 className="text-xl font-semibold">Loading case status...</h2>
+                <div className="mt-6 flex justify-center">
+                  <div className="h-10 w-10 animate-spin rounded-full border-b-4 border-blue-600"></div>
+                </div>
+              </>
+            )}
+            {waitingStatus === "pending" ? (
+              <>
+                <p className="text-sm font-medium text-gray-600">Waiting for the specialist</p>
+                  <h2 className="mt-3 text-2xl font-semibold">Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"}</h2>
                   <p className="mt-1 text-gray-700">to accept your request doctor</p>
                   <div className="mt-6 flex justify-center">
                     <div className="h-10 w-10 animate-spin rounded-full border-b-4 border-blue-600"></div>
@@ -916,13 +1464,13 @@ export default function RuralDashboardPage() {
                 </>
               ) : null}
 
-              {waitingRequest && waitingStatus === "accepted" ? (
+              {waitingStatus === "accepted" ? (
                 <>
-                  <h2 className="text-2xl font-semibold">Dr. {waitingRequest.specialist_name ?? "Specialist"} accepted your request</h2>
-                  <p className="mt-4 text-gray-700">{waitingRequest.specialist_message ?? "Specialist is reviewing the case."}</p>
+                  <h2 className="text-2xl font-semibold">Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"} accepted your request</h2>
+                  <p className="mt-4 text-gray-700">{waitingRequest?.specialist_message ?? "Specialist is reviewing the case."}</p>
                   <div className="mt-6 flex justify-center gap-3">
                     <div className="animate-bounce text-xl">🔍</div>
-                    <div className="animate-pulse text-xl">🧠</div>
+                    <div className="text-xl">🧠</div>
                     <div className="animate-bounce text-xl">✍️</div>
                   </div>
                   <p className="mt-5 text-sm text-gray-600">
@@ -932,15 +1480,57 @@ export default function RuralDashboardPage() {
                 </>
               ) : null}
 
-              {waitingRequest && waitingStatus === "completed" ? (
-                <>
-                  <h2 className="text-2xl font-semibold">Specialist Report from Dr. {waitingRequest.specialist_name ?? "Specialist"}</h2>
-                  <div className="mt-5 rounded-xl bg-white/60 p-5 text-left shadow-inner">
-                    <p className="whitespace-pre-wrap text-sm text-slate-700">{waitingRequest.specialist_diagnosis_report ?? "-"}</p>
+            {waitingStatus === "completed" ? (
+              <>
+                <h2 className="text-2xl font-semibold">Specialist Report from Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"}</h2>
+                <div className="mt-5 space-y-4 rounded-xl bg-white/60 p-5 text-left shadow-inner">
+                  <div>
+                    <h3 className="font-semibold text-slate-800">Diagnosis</h3>
+                    <p className="text-sm text-slate-700">Name: {(waitingReport?.diagnosis as { diagnosis_name?: string } | null)?.diagnosis_name ?? "-"}</p>
+                    <p className="text-sm text-slate-700">Severity: {(waitingReport?.diagnosis as { severity?: string } | null)?.severity ?? "-"}</p>
+                    <p className="text-sm text-slate-700">Notes: {(waitingReport?.diagnosis as { specialist_notes?: string } | null)?.specialist_notes ?? "-"}</p>
                   </div>
-                  {waitingRequest.specialist_message ? (
-                    <p className="mt-4 text-sm text-gray-700">{waitingRequest.specialist_message}</p>
-                  ) : null}
+                  <div>
+                    <h3 className="font-semibold text-slate-800">Treatment Plan</h3>
+                    <p className="text-sm text-slate-700">Title: {(waitingReport?.treatment as { treatment_title?: string } | null)?.treatment_title ?? "-"}</p>
+                    <p className="text-sm text-slate-700">Medications: {(waitingReport?.treatment as { medications?: string } | null)?.medications ?? "-"}</p>
+                    <p className="text-sm text-slate-700">Inhaler: {(waitingReport?.treatment as { inhaler_therapy?: string } | null)?.inhaler_therapy ?? "-"}</p>
+                    <p className="text-sm text-slate-700">Oxygen: {(waitingReport?.treatment as { oxygen_therapy?: string | boolean } | null)?.oxygen_therapy ? "Yes" : "No"}</p>
+                    <p className="text-sm text-slate-700">Rehab: {(waitingReport?.treatment as { pulmonary_rehabilitation?: string } | null)?.pulmonary_rehabilitation ?? "-"}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-800">Prescriptions</h3>
+                    {(waitingReport?.prescriptions ?? []).length === 0 ? (
+                      <p className="text-sm text-slate-700">-</p>
+                    ) : (
+                      (waitingReport?.prescriptions ?? []).map((rx, idx) => (
+                        <p key={`rx-${idx}`} className="text-sm text-slate-700">
+                          {(rx as { medication_name?: string; dosage?: string; frequency?: string; instructions?: string }).medication_name ?? "-"}{" "}
+                          {(rx as { dosage?: string }).dosage ?? ""} {(rx as { frequency?: string; instructions?: string }).frequency ?? (rx as { instructions?: string }).instructions ?? ""}
+                        </p>
+                      ))
+                    )}
+                  </div>
+                  <div className="mt-3">
+                    <h4 className="text-sm font-semibold text-gray-700">
+                      Recommended Further Investigations
+                    </h4>
+                    {(waitingReport?.furtherDiagnostics?.length ?? 0) === 0 ? (
+                      <p className="text-xs text-gray-500">Not Provided</p>
+                    ) : (
+                      <ol className="list-decimal ml-4 text-xs text-gray-700">
+                        {(waitingReport?.furtherDiagnostics ?? []).map((test, idx) => (
+                          <li key={idx}>{test}</li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-800">Follow-up</h3>
+                    <p className="text-sm text-slate-700">Date: {(waitingReport?.followup as { scheduled_date?: string } | null)?.scheduled_date ?? "-"}</p>
+                    <p className="text-sm text-slate-700">Notes: {(waitingReport?.followup as { notes?: string } | null)?.notes ?? "-"}</p>
+                  </div>
+                </div>
                   <button
                     onClick={handleFinalizeCase}
                     disabled={finalizing}
@@ -948,8 +1538,8 @@ export default function RuralDashboardPage() {
                   >
                     {finalizing ? "Finalizing..." : "Finalize Case"}
                   </button>
-                </>
-              ) : null}
+              </>
+            ) : null}
             </div>
           </div>
         </div>
@@ -987,10 +1577,15 @@ export default function RuralDashboardPage() {
                 const patientCode = Array.isArray(caseItem.patient)
                   ? caseItem.patient[0]?.generated_patient_id ?? "-"
                   : caseItem.patient?.generated_patient_id ?? "-";
+                const isEmergency = emergencyCaseMap[caseItem.id] || caseItem.priority === "emergency";
                 return (
                   <div
                     key={caseItem.id}
-                    className="flex items-center justify-between rounded-xl border border-white/30 bg-white/40 p-6 shadow-md backdrop-blur-lg"
+                    className={`flex items-center justify-between rounded-xl border bg-white/40 p-6 shadow-md backdrop-blur-lg transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] ${
+                      isEmergency
+                        ? "border-red-300 shadow-[0_0_24px_rgba(220,38,38,0.3)]"
+                        : "border-white/30"
+                    }`}
                   >
                     <div>
                       <p className="text-sm text-gray-500">Case #{index + 1}</p>
@@ -1006,13 +1601,19 @@ export default function RuralDashboardPage() {
                     <div>
                       <span
                         className={`rounded-full px-3 py-1 text-sm font-medium ${
-                          caseItem.priority === "emergency"
+                          isEmergency
                             ? "bg-red-100 text-red-600"
                             : "bg-green-100 text-green-600"
                         }`}
                       >
-                        {caseItem.priority === "emergency" ? "Emergency" : "Normal"}
+                        {isEmergency ? "Emergency" : "Normal"}
                       </span>
+                      {isEmergency ? (
+                        <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-500 px-2 py-1 text-xs font-semibold text-white">
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          Critical
+                        </span>
+                      ) : null}
                     </div>
 
                     <div className="flex gap-4">
@@ -1045,9 +1646,11 @@ export default function RuralDashboardPage() {
           >
             Back to Past Cases
           </button>
-          <div className="mb-6 rounded-xl border border-white/30 bg-white/40 p-6 shadow-md backdrop-blur-xl">
+          <div className={`mb-6 rounded-xl border bg-white/40 p-6 shadow-md backdrop-blur-xl ${
+            isEmergencyViewingCase ? "border-red-300 shadow-[0_0_24px_rgba(220,38,38,0.3)]" : "border-white/30"
+          }`}>
             <h1 className="text-2xl font-semibold">{caseDetail.patient?.name ?? "Patient"}</h1>
-            <p className="mt-1 text-gray-600">Patient ID: {caseDetail.patient?.generated_patient_id ?? "-"}</p>
+            <p className="mt-1 text-gray-600">Patient ID: {caseDetail.patient?.generated_patient_id ?? "Not Provided"}</p>
             <div className="mt-3">
               <span
                 className={`rounded-full px-3 py-1 text-sm font-medium ${
@@ -1056,28 +1659,44 @@ export default function RuralDashboardPage() {
               >
                 {caseDetail.case_status === "finalized" ? "Completed Case" : "In Progress Case"}
               </span>
+              {isEmergencyViewingCase ? (
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Emergency Case
+                </span>
+              ) : null}
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div className="rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl">
               <h2 className="mb-4 text-lg font-semibold">Patient Information</h2>
-              <p><strong>Name:</strong> {caseDetail.patient?.name ?? "-"}</p>
-              <p><strong>Patient ID:</strong> {caseDetail.patient?.generated_patient_id ?? "-"}</p>
-              <p><strong>Age:</strong> {caseDetail.patient?.age ?? "-"}</p>
-              <p><strong>Gender:</strong> {caseDetail.patient?.gender ?? "-"}</p>
-              <p><strong>Height:</strong> {caseDetail.patient?.height_cm ?? "-"} cm</p>
-              <p><strong>Weight:</strong> {caseDetail.patient?.weight_kg ?? "-"} kg</p>
+              <p><strong>Name:</strong> {caseDetail.patient?.name ?? "Not Provided"}</p>
+              <p><strong>Patient ID:</strong> {caseDetail.patient?.generated_patient_id ?? "Not Provided"}</p>
+              <p><strong>Age:</strong> {caseDetail.patient?.age ?? "Not Provided"}</p>
+              <p><strong>Gender:</strong> {caseDetail.patient?.gender ?? "Not Provided"}</p>
+              <p><strong>Height:</strong> {caseDetail.patient?.height_cm ?? "Not Provided"} cm</p>
+              <p><strong>Weight:</strong> {caseDetail.patient?.weight_kg ?? "Not Provided"} kg</p>
             </div>
 
             <div className="rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl">
               <h2 className="mb-4 text-lg font-semibold">Clinical History</h2>
-              <p className="leading-relaxed text-gray-700">{caseDetail.patient?.smoking_history ?? "-"}</p>
+              <p className="leading-relaxed text-gray-700">{caseDetail.patient?.smoking_history ?? "Not Provided"}</p>
             </div>
 
             <div className="col-span-1 rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl md:col-span-2">
               <h2 className="mb-4 text-lg font-semibold">Vitals & Spirometry</h2>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div className="rounded-lg bg-white/60 p-3 text-center">
+                  <p className="text-xs text-gray-500">BP</p>
+                  <p className="text-lg font-semibold">
+                    {caseDetail.vitals?.systolic_bp ?? "-"} / {caseDetail.vitals?.diastolic_bp ?? "-"} mmHg
+                  </p>
+                </div>
+                <div className="rounded-lg bg-white/60 p-3 text-center">
+                  <p className="text-xs text-gray-500">Temperature</p>
+                  <p className="text-lg font-semibold">{caseDetail.vitals?.temperature_f ?? "-"} °F</p>
+                </div>
                 <div className="rounded-lg bg-white/60 p-3 text-center">
                   <p className="text-xs text-gray-500">SpO2</p>
                   <p className="text-lg font-semibold">{caseDetail.vitals?.spo2 == null ? "—" : `${caseDetail.vitals.spo2}%`}</p>
@@ -1111,31 +1730,7 @@ export default function RuralDashboardPage() {
 
             <div className="col-span-1 rounded-xl border border-blue-200 bg-blue-50 p-6 md:col-span-2">
               <h2 className="mb-3 text-lg font-semibold">Rural Doctor Diagnosis</h2>
-              <p className="leading-relaxed text-gray-700">{caseDetail.rural_diagnosis ?? "-"}</p>
-            </div>
-
-            <div className="col-span-1 rounded-xl border border-green-200 bg-green-50 p-6 md:col-span-2">
-              <h2 className="mb-3 text-lg font-semibold">Specialist Diagnosis</h2>
-              <p className="leading-relaxed text-gray-700">{caseDetail.specialist_diagnosis || "Pending specialist response"}</p>
-            </div>
-
-            <div className="rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl">
-              <h3 className="text-lg font-semibold">Recommended Further Investigations</h3>
-              <div className="mt-2 space-y-2 text-gray-700">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={Boolean(caseDetail.ct_scan_required)} readOnly />
-                  CT Scan
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={Boolean(caseDetail.bronchoscopy_required)} readOnly />
-                  Bronchoscopy
-                </label>
-              </div>
-            </div>
-
-            <div className="rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl">
-              <h3 className="text-lg font-semibold">Follow-up Notes</h3>
-              <p className="mt-2 whitespace-pre-wrap text-gray-700">{caseDetail.follow_up_notes ?? "-"}</p>
+              <p className="leading-relaxed text-gray-700">{caseDetail.rural_diagnosis ?? "Not Provided"}</p>
             </div>
 
             <div className="col-span-1 rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl md:col-span-2">
@@ -1153,14 +1748,75 @@ export default function RuralDashboardPage() {
                   View X-ray
                 </button>
               ) : (
-                <p className="mt-2 text-gray-500">-</p>
+                <p className="mt-2 text-gray-500">Not Provided</p>
               )}
             </div>
+
+            <div className="col-span-1 rounded-xl border border-green-200 bg-green-50 p-6 md:col-span-2">
+              <h2 className="mb-3 text-lg font-semibold">Specialist Diagnosis</h2>
+              <div className="space-y-2 text-gray-700">
+                <p><strong>Primary Diagnosis:</strong> {caseDetail.diagnosis?.diagnosis_name ?? "Not Provided"}</p>
+                <p><strong>Severity:</strong> {caseDetail.diagnosis?.severity ?? "Not Provided"}</p>
+                <p><strong>Specialist:</strong> {caseDetail.specialist_name ?? "Not Provided"}</p>
+                <p><strong>Diagnosis Timestamp:</strong> {caseDetail.diagnosis?.created_at ?? "Not Provided"}</p>
+                <p><strong>Clinical Notes:</strong> {caseDetail.diagnosis?.specialist_notes ?? "Not Provided"}</p>
+              </div>
+            </div>
+
+            {(caseDetail.case_status === "completed" || caseDetail.case_status === "finalized") && (
+              <>
+                <div className="col-span-1 md:col-span-2">
+                  <TreatmentViewer
+                    medications={caseDetail.treatment?.medications ?? null}
+                    inhalerTherapy={caseDetail.treatment?.inhaler_therapy ?? null}
+                    oxygenTherapy={caseDetail.treatment?.oxygen_therapy ?? null}
+            pulmonaryRehab={caseDetail.treatment?.pulmonary_rehabilitation ?? null}
+            lifestyleAdvice={caseDetail.treatment?.lifestyle_recommendations ?? null}
+            referralNotes={caseDetail.treatment?.referral_recommendation ?? null}
+          />
+        </div>
+                <div className="col-span-1 md:col-span-2">
+                  <PrescriptionViewer rows={caseDetail.prescriptions ?? []} />
+                </div>
+                <div className="rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl">
+                  <h3 className="text-lg font-semibold">Recommended Further Investigations</h3>
+                  {(caseDetail.followup?.diagnostic_procedures?.length ?? 0) === 0 ? (
+                    <p className="text-sm text-gray-500">Not Provided</p>
+                  ) : (
+                    <ol className="list-decimal ml-5 text-sm text-gray-700 space-y-1">
+                      {(caseDetail.followup?.diagnostic_procedures ?? []).map((test, idx) => (
+                        <li key={idx}>{test}</li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+                <div className="rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl">
+                  <h3 className="text-lg font-semibold">Follow-up Notes</h3>
+                  <p className="mt-2 whitespace-pre-wrap text-gray-700">{caseDetail.followup?.notes ?? "Not Provided"}</p>
+                </div>
+                <div className="col-span-1">
+                  <FollowupTracker nextFollowupDate={caseDetail.followup?.scheduled_date ?? null} />
+                </div>
+                <div className="col-span-1">
+                  <CaseTimeline
+                    caseId={viewingCaseId}
+                    timestamps={{
+                      caseCreated: caseDetail.case_created_at ?? null,
+                      specialistAssigned: caseDetail.specialist_accepted_at ?? null,
+                      diagnosisCompleted: caseDetail.diagnosis?.created_at ?? null,
+                      treatmentGenerated: caseDetail.treatment?.created_at ?? null,
+                      followupScheduled: caseDetail.followup?.created_at ?? null,
+                      caseFinalized: caseDetail.case_status === "finalized" ? caseDetail.specialist_completed_at ?? null : null,
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </div>
           </div>
         ) : viewingCaseId ? (
           <div className="p-6 text-slate-400">
-            Loading case details...
+            {pastCaseLoading ? "Loading case details..." : "No details available."}
           </div>
         ) : null
       ) : null}
@@ -1339,6 +1995,39 @@ export default function RuralDashboardPage() {
           <h2 className="text-sm font-semibold text-slate-100">Step 2: Vitals & spirometry</h2>
           <p className="text-xs text-slate-400">Save patient first to enable this section.</p>
           <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="col-span-2 space-y-1">
+              <label className="text-slate-200">Blood Pressure (mmHg)</label>
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="number"
+                  placeholder="Systolic BP (mmHg)"
+                  className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={vitalsForm.systolic_bp}
+                  onChange={(e) => setVitalsForm((p) => ({ ...p, systolic_bp: e.target.value }))}
+                  disabled={!step2Enabled}
+                />
+                <input
+                  type="number"
+                  placeholder="Diastolic BP (mmHg)"
+                  className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={vitalsForm.diastolic_bp}
+                  onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic_bp: e.target.value }))}
+                  disabled={!step2Enabled}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-slate-200">Temperature (°F)</label>
+              <input
+                type="number"
+                step="0.1"
+                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                placeholder="Temperature (°F)"
+                value={vitalsForm.temperature}
+                onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value }))}
+                disabled={!step2Enabled}
+              />
+            </div>
             <div className="space-y-1">
               <label className="text-slate-200">SpO2 (%)</label>
               <input
@@ -1482,7 +2171,6 @@ export default function RuralDashboardPage() {
           type="button"
           onClick={async () => {
             await openSpecialistModal();
-            setShowSpecialistModal(false);
             setCurrentStep(5);
           }}
           disabled={!canSubmitCase || submittingCase}
@@ -1691,7 +2379,3 @@ export default function RuralDashboardPage() {
     </div>
   );
 }
-
-
-
-

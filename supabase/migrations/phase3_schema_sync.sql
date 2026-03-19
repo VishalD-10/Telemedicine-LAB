@@ -88,7 +88,7 @@ ALTER TYPE public.case_priority_new RENAME TO case_priority;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'case_status_new') THEN
-    EXECUTE 'CREATE TYPE public.case_status_new AS ENUM (''pending'', ''assigned'', ''reviewed'', ''completed'')';
+    EXECUTE 'CREATE TYPE public.case_status_new AS ENUM (''pending'', ''assigned'', ''reviewed'', ''reviewing'', ''completed'')';
   END IF;
 END $$;
 
@@ -309,3 +309,38 @@ USING (
   rural_doctor_id = auth.uid()
   OR specialist_id = auth.uid()
 );
+
+-- Auto-update case status when review timestamp is set
+CREATE OR REPLACE FUNCTION public.auto_update_case_status()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+
+-- Specialist accepted
+IF NEW.assigned_at IS NOT NULL AND OLD.assigned_at IS NULL THEN
+    NEW.status := 'accepted';
+END IF;
+
+-- Specialist started reviewing
+IF NEW.reviewed_at IS NOT NULL AND OLD.reviewed_at IS NULL THEN
+    NEW.status := 'reviewing';
+END IF;
+
+-- Specialist finished report
+IF NEW.reviewed_at IS NOT NULL 
+   AND NEW.status NOT IN ('finalized') 
+   AND NEW.report_pdf_path IS NOT NULL THEN
+    NEW.status := 'completed';
+END IF;
+
+RETURN NEW;
+
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_auto_update_case_status ON public.cases;
+CREATE TRIGGER trg_auto_update_case_status
+BEFORE UPDATE ON public.cases
+FOR EACH ROW
+EXECUTE FUNCTION public.auto_update_case_status();

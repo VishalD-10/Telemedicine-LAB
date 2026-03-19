@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { ReactNode } from "react";
+import PageTransition from "@/components/ui/PageTransition";
 
 export default function RootLayout({
   children,
@@ -8,7 +9,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <PageTransition>{children}</PageTransition>
+      </body>
     </html>
   );
 }

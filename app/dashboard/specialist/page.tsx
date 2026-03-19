@@ -1,12 +1,44 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import dynamicImport from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import DiagnosisPanel from "@/components/specialist/DiagnosisPanel";
+import TreatmentPanel from "@/components/specialist/TreatmentPanel";
+import PrescriptionPanel, { PrescriptionRow } from "@/components/specialist/PrescriptionPanel";
+import FurtherDiagnosticsChecklistPanel from "@/components/specialist/DiagnosticTestsPanel";
+import FollowupPanel from "@/components/specialist/FollowupPanel";
+import TreatmentViewer from "@/components/rural/TreatmentViewer";
+import PrescriptionViewer from "@/components/rural/PrescriptionViewer";
+import FollowupTracker from "@/components/rural/FollowupTracker";
+import CaseTimeline from "@/components/shared/CaseTimeline";
 
 const DicomViewer = dynamicImport(() => import("@/app/components/DicomViewer"), { ssr: false });
+
+const RequestSkeleton = () => (
+  <div className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm animate-pulse">
+    <div className="h-4 w-32 rounded bg-gray-200" />
+    <div className="mt-3 space-y-2">
+      <div className="h-3 w-full rounded bg-gray-200" />
+      <div className="h-3 w-5/6 rounded bg-gray-200" />
+      <div className="h-3 w-2/3 rounded bg-gray-200" />
+    </div>
+  </div>
+);
+
+const DiagnosisSkeleton = () => (
+  <div className="rounded-2xl border border-black/10 bg-white p-6 shadow-sm animate-pulse">
+    <div className="h-4 w-40 rounded bg-gray-200" />
+    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="h-20 rounded bg-gray-200" />
+      <div className="h-20 rounded bg-gray-200" />
+      <div className="h-20 rounded bg-gray-200" />
+      <div className="h-20 rounded bg-gray-200" />
+    </div>
+  </div>
+);
 
 interface SpecialistRequestRow {
   id: string;
@@ -35,11 +67,44 @@ interface CaseReviewData {
   generatedPatientId: string | null;
   patientHistory: string | null;
   patientMeta: { age?: number | null; gender?: string | null; height_cm?: number | null; weight_kg?: number | null };
-  vitals: { spo2?: number | null; respiratory_rate?: number | null; created_at?: string | null }[];
+  vitals: {
+    spo2?: number | null;
+    respiratory_rate?: number | null;
+    systolic_bp?: number | null;
+    diastolic_bp?: number | null;
+    temperature_f?: number | null;
+    created_at?: string | null;
+  }[];
   spirometry: { fvc?: number | null; fev1?: number | null; fev1_fvc?: number | null; fev1_fev6?: number | null; pef?: number | null; created_at?: string | null }[];
   ruralDiagnosis: string | null;
   xrayPaths: string[];
 }
+
+type DiagnosisTemplate = {
+  id: string;
+  diagnosis_name: string;
+  details?: string | null;
+  defaultSeverity?: string | null;
+};
+
+type DiagnosisFormState = {
+  diagnosisTemplateId: string;
+  diagnosisTemplateName: string;
+  manualDiagnosis: string;
+  severity: "mild" | "moderate" | "severe" | "critical";
+  clinicalNotes: string;
+};
+
+type TreatmentFormState = {
+  treatmentTitle: string;
+  medications: string;
+  inhalerTherapy: string;
+  oxygenTherapy: string;
+  pulmonaryRehab: string;
+  lifestyleAdvice: string;
+  referralRecommendation: string;
+};
+
 
 export default function SpecialistDashboardPage() {
   const router = useRouter();
@@ -52,33 +117,35 @@ export default function SpecialistDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewState, setViewState] = useState<"list" | "accept" | "review" | "past">("list");
 
-  const [ready, setReady] = useState(false);
   const [baseDataReady, setBaseDataReady] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<SpecialistRequestRow | null>(null);
   const [acceptMessage, setAcceptMessage] = useState("");
   const [accepting, setAccepting] = useState(false);
   const [reviewData, setReviewData] = useState<CaseReviewData | null>(null);
-  const [furtherDiagnosisRequired, setFurtherDiagnosisRequired] = useState(false);
-  const [specialistDiagnosisReport, setSpecialistDiagnosisReport] = useState("");
   const [finishing, setFinishing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [showXrayModal, setShowXrayModal] = useState(false);
   const [xrayUrl, setXrayUrl] = useState<string | null>(null);
   const [xrayPath, setXrayPath] = useState<string | null>(null);
-  const [viewingPastCaseId, setViewingPastCaseId] = useState<string | null>(null);
-  const [furtherDiagnosisTypes, setFurtherDiagnosisTypes] = useState<{ ctScan: boolean; bronchoscopy: boolean }>({
-    ctScan: false,
-    bronchoscopy: false,
-  });
-  const [pastCaseDetail, setPastCaseDetail] = useState<{
-    patientName: string | null;
-    generatedPatientId: string | null;
-    patientHistory: string | null;
-    ruralDiagnosis: string | null;
-    specialistDiagnosis: string | null;
-    followUps: string | null;
-    finalReport?: string | null;
-    vitals?: { spo2?: number | null; respiratory_rate?: number | null; created_at?: string | null } | null;
+  const viewingPastCaseIdRef = useRef<string | null>(null);
+  const [viewingPastCaseData, setViewingPastCaseData] = useState<{
+    patient?: {
+      name?: string;
+      generated_patient_id?: string | null;
+      age?: number | null;
+      gender?: string | null;
+      height_cm?: number | null;
+      weight_kg?: number | null;
+      smoking_history?: string | null;
+    };
+    vitals?: {
+      spo2?: number | null;
+      respiratory_rate?: number | null;
+      systolic_bp?: number | null;
+      diastolic_bp?: number | null;
+      temperature_f?: number | null;
+      created_at?: string | null;
+    } | null;
     spirometry?: {
       fvc?: number | null;
       fev1?: number | null;
@@ -87,14 +154,131 @@ export default function SpecialistDashboardPage() {
       pef?: number | null;
       created_at?: string | null;
     } | null;
-    ctScanRequired?: boolean | null;
-    bronchoscopyRequired?: boolean | null;
-    xrayPaths: string[];
+    xrays?: { path: string }[];
+    rural_diagnosis?: string | null;
+    finalized_report?: string | null;
+    follow_up_notes?: string | null;
+    case_status?: string | null;
+    specialist_name?: string | null;
+    specialist_accepted_at?: string | null;
+    specialist_completed_at?: string | null;
+    case_created_at?: string | null;
+    diagnosis?: {
+      diagnosis_name?: string | null;
+      severity?: string | null;
+      specialist_notes?: string | null;
+      created_at?: string | null;
+    } | null;
+    treatment?: {
+      treatment_title?: string | null;
+      medications?: string | null;
+      inhaler_therapy?: string | null;
+      oxygen_therapy?: boolean | null;
+      pulmonary_rehabilitation?: string | null;
+      lifestyle_recommendations?: string | null;
+      referral_recommendation?: string | null;
+      created_at?: string | null;
+    } | null;
+    prescriptions?: {
+      id: string;
+      medication: string | null;
+      dosage: string | null;
+      frequency: string | null;
+      duration: string | null;
+      instructions: string | null;
+    }[];
+    followup?: {
+      scheduled_date?: string | null;
+      notes?: string | null;
+      diagnostic_procedures?: string[] | null;
+      created_at?: string | null;
+    } | null;
+    specialist_report?: {
+      specialist_name: string | null;
+      diagnosis:
+        | {
+            primary_diagnosis: string | null;
+            severity: string | null;
+            clinical_notes: string | null;
+            created_at: string | null;
+          }
+        | null;
+      treatment:
+        | {
+            medications: string | null;
+            inhaler_therapy: string | null;
+            oxygen_therapy: boolean | null;
+            pulmonary_rehab: string | null;
+            lifestyle_advice: string | null;
+            referral_recommendation: string | null;
+            created_at: string | null;
+          }
+        | null;
+      prescriptions: {
+        id: string;
+        medication: string | null;
+        dosage: string | null;
+        frequency: string | null;
+        duration: string | null;
+        instructions: string | null;
+      }[];
+      followup:
+        | {
+            followup_date: string | null;
+            created_at: string | null;
+            diagnostic_procedures: string[] | null;
+          }
+        | null;
+      timeline: {
+        case_created_at: string | null;
+        specialist_accepted_at: string | null;
+        diagnosis_submitted_at: string | null;
+        treatment_generated_at: string | null;
+        followup_scheduled_at: string | null;
+        case_finalized_at: string | null;
+      };
+      specialist_accepted_at: string | null;
+      specialist_completed_at: string | null;
+      case_created_at: string | null;
+    } | null;
   } | null>(null);
-
-  useEffect(() => {
-    setReady(true);
-  }, []);
+  const [pastCaseLoading, setPastCaseLoading] = useState(false);
+  const [diagnosisTemplates, setDiagnosisTemplates] = useState<DiagnosisTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateDependentLoading, setTemplateDependentLoading] = useState(false);
+  const [diagnosisSaving, setDiagnosisSaving] = useState(false);
+  const [treatmentSaving, setTreatmentSaving] = useState(false);
+  const [prescriptionSaving, setPrescriptionSaving] = useState(false);
+  const [followupSaving, setFollowupSaving] = useState(false);
+  const [diagnosisForm, setDiagnosisForm] = useState<DiagnosisFormState>({
+    diagnosisTemplateId: "",
+    diagnosisTemplateName: "",
+    manualDiagnosis: "",
+    severity: "moderate",
+    clinicalNotes: "",
+  });
+  const [treatmentForm, setTreatmentForm] = useState<TreatmentFormState>({
+    treatmentTitle: "",
+    medications: "",
+    inhalerTherapy: "",
+    oxygenTherapy: "",
+    pulmonaryRehab: "",
+    lifestyleAdvice: "",
+    referralRecommendation: "",
+  });
+  const [prescriptionRows, setPrescriptionRows] = useState<PrescriptionRow[]>([
+    { id: "rx-default", medication: "", dosage: "", frequency: "", duration: "", notes: "" },
+  ]);
+  const [furtherDiagnosticsTests, setFurtherDiagnosticsTests] = useState<string[]>([]);
+  const [furtherDiagnosticsCustomInput, setFurtherDiagnosticsCustomInput] = useState("");
+  const [followupInterval, setFollowupInterval] = useState("2 weeks");
+  const [followupDate, setFollowupDate] = useState("");
+  const [followupNotes, setFollowupNotes] = useState("");
+  const [timelineLocalTimestamps, setTimelineLocalTimestamps] = useState<{
+    diagnosisCompleted?: string | null;
+    treatmentGenerated?: string | null;
+    followupScheduled?: string | null;
+  }>({});
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -117,6 +301,290 @@ export default function SpecialistDashboardPage() {
     const timer = setTimeout(() => setError(null), 3000);
     return () => clearTimeout(timer);
   }, [error]);
+
+  const deriveSeverity = (row: Record<string, unknown>) => {
+    const severityRaw =
+      (row.default_severity as string | undefined) ??
+      (row.severity as string | undefined) ??
+      (row.level as string | undefined);
+    if (!severityRaw) return "moderate";
+    const normalized = severityRaw.toLowerCase();
+    if (normalized === "mild" || normalized === "moderate" || normalized === "severe" || normalized === "critical") {
+      return normalized;
+    }
+    return "moderate";
+  };
+
+  const resetExtendedReviewState = () => {
+    setDiagnosisTemplates([]);
+    setDiagnosisForm({
+      diagnosisTemplateId: "",
+      diagnosisTemplateName: "",
+      manualDiagnosis: "",
+      severity: "moderate",
+      clinicalNotes: "",
+    });
+    setTreatmentForm({
+      treatmentTitle: "",
+      medications: "",
+      inhalerTherapy: "",
+      oxygenTherapy: "",
+      pulmonaryRehab: "",
+      lifestyleAdvice: "",
+      referralRecommendation: "",
+    });
+    setPrescriptionRows([{ id: `rx-${Date.now()}`, medication: "", dosage: "", frequency: "", duration: "", notes: "" }]);
+    setFurtherDiagnosticsTests([]);
+    setFurtherDiagnosticsCustomInput("");
+    setFollowupInterval("2 weeks");
+    setFollowupDate("");
+    setFollowupNotes("");
+    setTimelineLocalTimestamps({});
+  };
+
+  const loadDiagnosisTemplates = async () => {
+    setTemplatesLoading(true);
+    const { data, error: templateErr } = await supabase.from("pulmonology_diagnoses").select("id, diagnosis_name");
+    setTemplatesLoading(false);
+    if (templateErr) {
+      setError(templateErr.message);
+      return;
+    }
+    const mapped = ((data ?? []) as Record<string, unknown>[]).map((row, index) => ({
+      id: String((row.id as string | number | undefined) ?? `diag-${index}`),
+      diagnosis_name: String((row.diagnosis_name as string | undefined) ?? ""),
+      details: null,
+      defaultSeverity: "moderate",
+    }));
+    setDiagnosisTemplates(mapped);
+  };
+
+  const inferIntervalFromSeverity = (severity: DiagnosisFormState["severity"]) => {
+    if (severity === "critical" || severity === "severe") return "1 week";
+    if (severity === "moderate") return "2 weeks";
+    return "4 weeks";
+  };
+
+
+  const syncPrescriptionFromTreatment = (medicationString: string) => {
+    const meds = medicationString
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean);
+
+    return meds.map((m, i) => ({
+      id: `rx-auto-${i}`,
+      medication: m,
+      dosage: "",
+      frequency: "",
+      duration: "",
+      notes: "",
+    }));
+  };
+
+  const applyTemplateDrivenForms = async (diagnosisTemplateId: string) => {
+    if (!diagnosisTemplateId) return;
+    setTemplateDependentLoading(true);
+
+    const selectedTemplate = diagnosisTemplates.find((t) => t.id === diagnosisTemplateId);
+
+    setDiagnosisForm((prev) => ({
+      ...prev,
+      diagnosisTemplateId,
+      diagnosisTemplateName: selectedTemplate?.diagnosis_name ?? "",
+      manualDiagnosis: "",
+      severity: (selectedTemplate?.defaultSeverity as DiagnosisFormState["severity"]) ?? "moderate",
+    }));
+
+    setTreatmentForm({
+      treatmentTitle: "",
+      medications: "",
+      inhalerTherapy: "",
+      oxygenTherapy: "",
+      pulmonaryRehab: "",
+      lifestyleAdvice: "",
+      referralRecommendation: "",
+    });
+    setPrescriptionRows([]);
+    setFollowupInterval("2 weeks");
+
+    const [treatmentRes, prescriptionRes] = await Promise.all([
+      supabase
+        .from("treatment_plan_templates")
+        .select("*")
+        .eq("diagnosis_id", diagnosisTemplateId)
+        .single(),
+
+      supabase
+        .from("prescription_templates")
+        .select("*")
+        .eq("diagnosis_id", diagnosisTemplateId),
+    ]);
+
+    setTemplateDependentLoading(false);
+
+    if (treatmentRes.error && treatmentRes.error.code !== "PGRST116") {
+      setError(treatmentRes.error.message);
+    }
+
+    if (treatmentRes.data) {
+      const t = treatmentRes.data as Record<string, unknown>;
+
+      setTreatmentForm({
+        treatmentTitle: String((t.treatment_title as string | undefined) ?? ""),
+        medications: String((t.medications as string | undefined) ?? ""),
+        inhalerTherapy: String((t.inhaler_therapy as string | undefined) ?? ""),
+        oxygenTherapy: (t.oxygen_therapy as boolean | undefined) ? "Yes" : "No",
+        pulmonaryRehab: String((t.pulmonary_rehabilitation as string | undefined) ?? ""),
+        lifestyleAdvice: String((t.lifestyle_recommendations as string | undefined) ?? ""),
+        referralRecommendation: String((t.referral_recommendation as string | undefined) ?? ""),
+      });
+
+      if (!prescriptionRes.data || prescriptionRes.data.length === 0) {
+        const meds = String((t.medications as string | undefined) ?? "");
+        if (meds.trim()) {
+          setPrescriptionRows(syncPrescriptionFromTreatment(meds));
+        }
+      }
+    }
+
+    if (prescriptionRes.error) {
+      setError(prescriptionRes.error.message);
+      return;
+    }
+
+    if (prescriptionRes.data) {
+      const rows = prescriptionRes.data.map((rx: Record<string, unknown>, i: number) => ({
+        id: String((rx.id as string | number | undefined) ?? `rx-${i}`),
+        medication: String((rx.medication_name as string | undefined) ?? ""),
+        dosage: String((rx.dosage as string | undefined) ?? ""),
+        frequency: String((rx.frequency as string | undefined) ?? ""),
+        duration: String((rx.duration_days as string | number | undefined) ?? ""),
+        notes: String((rx.instructions as string | undefined) ?? ""),
+      }));
+
+      setPrescriptionRows(
+        rows.length
+          ? rows
+          : [{
+              id: `rx-empty-${Date.now()}`,
+              medication: "",
+              dosage: "",
+              frequency: "",
+              duration: "",
+              notes: "",
+            }]
+      );
+    }
+
+    setFurtherDiagnosticsTests([]);
+    setFollowupInterval(
+      inferIntervalFromSeverity((selectedTemplate?.defaultSeverity as DiagnosisFormState["severity"]) ?? "moderate")
+    );
+  };
+
+  const saveCaseDiagnosis = async () => {
+    if (!reviewData || !userId) return;
+    setDiagnosisSaving(true);
+    const hasTemplate = Boolean(diagnosisForm.diagnosisTemplateId);
+    const selectedDiagnosisId = hasTemplate ? diagnosisForm.diagnosisTemplateId : null;
+    const diagnosisNameToSave = diagnosisForm.diagnosisTemplateName || diagnosisForm.manualDiagnosis;
+    const payload = {
+      case_id: reviewData.caseId,
+      specialist_id: userId,
+      diagnosis_id: selectedDiagnosisId,
+      diagnosis_name: diagnosisNameToSave || null,
+      is_manual: !hasTemplate,
+      severity: diagnosisForm.severity,
+      specialist_notes: diagnosisForm.clinicalNotes || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error: saveErr } = await supabase.from("case_diagnoses").upsert(payload, { onConflict: "case_id" });
+    setDiagnosisSaving(false);
+    if (saveErr) {
+      setError(saveErr.message);
+      return;
+    }
+    setTimelineLocalTimestamps((prev) => ({ ...prev, diagnosisCompleted: new Date().toISOString() }));
+  };
+
+  const saveTreatmentPlan = async () => {
+    if (!reviewData || !userId) return;
+    setTreatmentSaving(true);
+    const payload = {
+      case_id: reviewData.caseId,
+      specialist_id: userId,
+      treatment_title: treatmentForm.treatmentTitle || null,
+      medications: treatmentForm.medications || null,
+      inhaler_therapy: treatmentForm.inhalerTherapy || null,
+      oxygen_therapy: treatmentForm.oxygenTherapy === "Yes",
+      pulmonary_rehabilitation: treatmentForm.pulmonaryRehab || null,
+      lifestyle_recommendations: treatmentForm.lifestyleAdvice || null,
+      referral_recommendation: treatmentForm.referralRecommendation || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error: saveErr } = await supabase.from("case_treatment_plans").upsert(payload, { onConflict: "case_id" });
+    setTreatmentSaving(false);
+    if (saveErr) {
+      setError(saveErr.message);
+      return;
+    }
+    setTimelineLocalTimestamps((prev) => ({ ...prev, treatmentGenerated: new Date().toISOString() }));
+  };
+
+  const savePrescription = async () => {
+    if (!reviewData || !userId) return;
+    setPrescriptionSaving(true);
+    const { error: deleteErr } = await supabase.from("prescriptions").delete().eq("case_id", reviewData.caseId);
+    if (deleteErr) {
+      setPrescriptionSaving(false);
+      setError(deleteErr.message);
+      return;
+    }
+    const cleanRows = prescriptionRows.filter((row) => row.medication.trim());
+    if (cleanRows.length === 0) {
+      setPrescriptionSaving(false);
+      return;
+    }
+    const payload = cleanRows.map((row) => ({
+      case_id: reviewData.caseId,
+      specialist_id: userId,
+      medication_name: row.medication || null,
+      dosage: row.dosage || null,
+      frequency: row.frequency || null,
+      duration_days: row.duration || null,
+      instructions: row.notes || null,
+      created_at: new Date().toISOString(),
+    }));
+    const { error: saveErr } = await supabase.from("prescriptions").insert(payload);
+    setPrescriptionSaving(false);
+    if (saveErr) {
+      setError(saveErr.message);
+    }
+  };
+
+  const saveFollowup = async () => {
+    if (!reviewData || !userId) return;
+    setFollowupSaving(true);
+    const diagnosticsToSave =
+      furtherDiagnosticsTests?.length ? furtherDiagnosticsTests : [];
+    const payload = {
+      case_id: reviewData.caseId,
+      specialist_id: userId,
+      followup_type: followupInterval,
+      scheduled_date: followupDate || null,
+      notes: followupNotes || null,
+      diagnostic_procedures: diagnosticsToSave,
+      updated_at: new Date().toISOString(),
+    };
+    const { error: saveErr } = await supabase.from("followups").upsert(payload, { onConflict: "case_id" });
+    setFollowupSaving(false);
+    if (saveErr) {
+      setError(saveErr.message);
+      return;
+    }
+    setTimelineLocalTimestamps((prev) => ({ ...prev, followupScheduled: new Date().toISOString() }));
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -308,6 +776,17 @@ export default function SpecialistDashboardPage() {
     setAcceptedRequests(acceptedRows);
   };
 
+  const refetchRequests = () => {
+    if (!userId) return;
+    loadRequests(userId);
+  };
+
+  const refetchCases = () => {
+    if (!userId) return;
+    loadRequests(userId);
+    loadPastCasesForSpecialist();
+  };
+
   useEffect(() => {
     if (!userId) return;
     let active = true;
@@ -323,6 +802,40 @@ export default function SpecialistDashboardPage() {
     };
   }, [userId]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel("specialist-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "specialist_requests" },
+        () => {
+          refetchRequests();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "cases" },
+        () => {
+          refetchCases();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!reviewData?.caseId) return;
+    loadDiagnosisTemplates();
+  }, [reviewData?.caseId]);
+
+  useEffect(() => {
+    if (!diagnosisForm.diagnosisTemplateId) return;
+    applyTemplateDrivenForms(diagnosisForm.diagnosisTemplateId);
+  }, [diagnosisForm.diagnosisTemplateId, diagnosisTemplates]);
+
 
   const activeList = activeTab === "emergency" ? emergencyPending : normalPending;
   const reviewRequest =
@@ -336,6 +849,7 @@ export default function SpecialistDashboardPage() {
   };
 
   const handleOpenReview = (req: SpecialistRequestRow) => {
+    resetExtendedReviewState();
     setViewState("review");
     if (req.case_id && req.patient_id)
       loadReviewData(req.case_id, req.id, req.patient_id, () => setViewState("review"));
@@ -384,9 +898,10 @@ export default function SpecialistDashboardPage() {
     patientId: string,
     onDone?: () => void
   ) => {
+    resetExtendedReviewState();
     const { data: caseRows } = await supabase
       .from("cases")
-      .select("id, patient_id, rural_diagnosis_report, specialist_diagnosis_report, status")
+      .select("id, patient_id, rural_diagnosis_report, status")
       .eq("id", caseId)
       .limit(1);
     const caseRow = caseRows?.[0] as
@@ -394,7 +909,6 @@ export default function SpecialistDashboardPage() {
           id?: string;
           patient_id?: string;
           rural_diagnosis_report?: string | null;
-          specialist_diagnosis_report?: string | null;
           status?: string | null;
         }
       | undefined;
@@ -408,7 +922,7 @@ export default function SpecialistDashboardPage() {
       | undefined;
     const { data: vitalsRows } = await supabase
       .from("vitals")
-      .select("spo2, respiratory_rate, created_at")
+      .select("spo2, respiratory_rate, systolic_bp, diastolic_bp, temperature_f, created_at")
       .eq("patient_id", patientId)
       .order("created_at", { ascending: false });
     const { data: spirometryRows } = await supabase
@@ -433,7 +947,14 @@ export default function SpecialistDashboardPage() {
         height_cm: (patientRow as { height_cm?: number | null } | undefined)?.height_cm ?? null,
         weight_kg: (patientRow as { weight_kg?: number | null } | undefined)?.weight_kg ?? null,
       },
-      vitals: (vitalsRows ?? []) as { spo2?: number | null; respiratory_rate?: number | null; created_at?: string | null }[],
+      vitals: (vitalsRows ?? []) as {
+        spo2?: number | null;
+        respiratory_rate?: number | null;
+        systolic_bp?: number | null;
+        diastolic_bp?: number | null;
+        temperature_f?: number | null;
+        created_at?: string | null;
+      }[],
       spirometry: (spirometryRows ?? []) as {
         fvc?: number | null;
         fev1?: number | null;
@@ -445,6 +966,14 @@ export default function SpecialistDashboardPage() {
       ruralDiagnosis: caseRow?.rural_diagnosis_report ?? null,
       xrayPaths,
     });
+    setDiagnosisForm({
+      diagnosisTemplateId: "",
+      diagnosisTemplateName: "",
+      manualDiagnosis: "",
+      severity: "moderate",
+      clinicalNotes: "",
+    });
+    setFurtherDiagnosticsTests([]);
     onDone?.();
   };
 
@@ -452,21 +981,17 @@ export default function SpecialistDashboardPage() {
     if (!reviewData || !typeof window) return;
     if (!window.confirm("Submit your diagnosis and finish this case?")) return;
     setFinishing(true);
-    const caseUpdate: {
-      specialist_diagnosis_report: string | null;
-      ct_scan_required: boolean;
-      bronchoscopy_required: boolean;
-    } = {
-      specialist_diagnosis_report: specialistDiagnosisReport.trim() || null,
-      ct_scan_required: furtherDiagnosisRequired ? furtherDiagnosisTypes.ctScan : false,
-      bronchoscopy_required: furtherDiagnosisRequired ? furtherDiagnosisTypes.bronchoscopy : false,
-    };
-    const { error: caseErr } = await supabase
-      .from("cases")
-      .update(caseUpdate)
-      .eq("id", reviewData.caseId);
-    if (caseErr) {
-      setError(caseErr.message);
+
+    const [{ data: diagnosisRows }, { data: treatmentRows }, { data: prescriptionRows }, { data: followupRows }] =
+      await Promise.all([
+        supabase.from("case_diagnoses").select("id").eq("case_id", reviewData.caseId).limit(1),
+        supabase.from("case_treatment_plans").select("id").eq("case_id", reviewData.caseId).limit(1),
+        supabase.from("prescriptions").select("id").eq("case_id", reviewData.caseId).limit(1),
+        supabase.from("followups").select("id").eq("case_id", reviewData.caseId).limit(1),
+      ]);
+
+    if (!diagnosisRows?.length || !treatmentRows?.length || !prescriptionRows?.length || !followupRows?.length) {
+      setError("Complete diagnosis, treatment, prescriptions, and follow-up before finishing.");
       setFinishing(false);
       return;
     }
@@ -481,6 +1006,7 @@ export default function SpecialistDashboardPage() {
     }
     if (userId) {
       await loadRequests(userId);
+      await loadPastCasesForSpecialist();
     }
     const { error: reqErr } = await supabase
       .from("specialist_requests")
@@ -492,10 +1018,8 @@ export default function SpecialistDashboardPage() {
       return;
     }
     setReviewData(null);
-    setSpecialistDiagnosisReport("");
-    setFurtherDiagnosisRequired(false);
-    setFurtherDiagnosisTypes({ ctScan: false, bronchoscopy: false });
-    setViewState("list");
+    resetExtendedReviewState();
+    setViewState("past");
     if (userId) {
       loadRequests(userId);
     }
@@ -507,45 +1031,126 @@ export default function SpecialistDashboardPage() {
     setShowXrayModal(true);
   };
 
-  function handleViewPastDetails(req: SpecialistRequestRow) {
-    setViewingPastCaseId(req.case_id);
-    const load = async () => {
+  const loadFullCaseSummary = async (caseId: string, patientId: string) => {
+    if (!caseId || !patientId) return;
+    setPastCaseLoading(true);
+    setViewingPastCaseData(null);
+    viewingPastCaseIdRef.current = caseId;
+    try {
       const { data: caseRows } = await supabase
         .from("cases")
-        .select(
-          "id, priority, rural_diagnosis_report, specialist_diagnosis_report, follow_up_notes, ct_scan_required, bronchoscopy_required, patients (name, generated_patient_id, age, gender, height_cm, weight_kg, smoking_history)"
-        )
-        .eq("id", req.case_id)
+        .select("id, patient_id, specialist_id, created_at, status, rural_diagnosis_report")
+        .eq("id", caseId)
         .limit(1);
-      const caseRow = caseRows?.[0] as
-        | (Record<string, unknown> & { patients?: Record<string, unknown> | null })
-        | undefined;
-      const patientRow = caseRow?.patients ?? null;
-      const { data: v } = await supabase
-        .from("vitals")
-        .select("*")
-        .eq("patient_id", req.patient_id)
+      const c = caseRows?.[0] as {
+        id?: string;
+        patient_id: string;
+        specialist_id?: string | null;
+        created_at?: string | null;
+        status?: string | null;
+        rural_diagnosis_report?: string | null;
+      } | undefined;
+      if (!c) {
+        setViewingPastCaseData(null);
+        viewingPastCaseIdRef.current = null;
+        return;
+      }
+      const caseIdFromRow = c.id ?? caseId;
+      const patientIdFromCase = c.patient_id ?? patientId;
+
+      const { data: diagnosisRows } = await supabase
+        .from("case_diagnoses")
+        .select("diagnosis_name, severity, specialist_notes, created_at")
+        .eq("case_id", caseIdFromRow)
         .order("created_at", { ascending: false })
         .limit(1);
-      const { data: s } = await supabase
-        .from("spirometry")
-        .select("*")
-        .eq("patient_id", req.patient_id)
+      const diagnosis = diagnosisRows?.[0] ?? null;
+
+      const { data: treatmentRows } = await supabase
+        .from("case_treatment_plans")
+        .select("medications, inhaler_therapy, oxygen_therapy, pulmonary_rehabilitation, lifestyle_recommendations, referral_recommendation, created_at")
+        .eq("case_id", caseIdFromRow)
         .order("created_at", { ascending: false })
         .limit(1);
-      const { data: x } = await supabase
-        .from("xrays")
-        .select("file_path")
-        .eq("patient_id", req.patient_id);
-      setPastCaseDetail({
-        patientName: (patientRow as { name?: string | null } | null)?.name ?? null,
-        generatedPatientId: (patientRow as { generated_patient_id?: string | null } | null)?.generated_patient_id ?? null,
-        patientHistory: (patientRow as { smoking_history?: string | null } | null)?.smoking_history ?? null,
-        ruralDiagnosis: (caseRow as { rural_diagnosis_report?: string | null } | null)?.rural_diagnosis_report ?? null,
-        specialistDiagnosis: (caseRow as { specialist_diagnosis_report?: string | null } | null)?.specialist_diagnosis_report ?? null,
-        followUps: (caseRow as { follow_up_notes?: string | null } | null)?.follow_up_notes ?? null,
-        finalReport: null,
-        vitals: (v?.[0] as { spo2?: number | null; respiratory_rate?: number | null; created_at?: string | null }) ?? null,
+      const treatment = treatmentRows?.[0] ?? null;
+
+      const { data: prescriptions } = await supabase
+        .from("prescriptions")
+        .select("medication_name, dosage, frequency, duration_days, instructions")
+        .eq("case_id", caseIdFromRow)
+        .order("created_at", { ascending: true });
+
+      const { data: followupRows } = await supabase
+        .from("followups")
+        .select("scheduled_date, notes, diagnostic_procedures, created_at")
+        .eq("case_id", caseIdFromRow);
+      const followup = followupRows?.[0] ?? null;
+      const diagnosticsValue = (followup as { diagnostic_procedures?: unknown } | null)?.diagnostic_procedures;
+      const furtherDiagnostics = Array.isArray(diagnosticsValue)
+        ? diagnosticsValue.map((item) => String(item)).filter(Boolean)
+        : typeof diagnosticsValue === "string"
+          ? diagnosticsValue.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean)
+          : [];
+
+      const [patientRes, vitalsRes, spirometryRes, xrayRes] = await Promise.all([
+        supabase
+          .from("patients")
+          .select("name, generated_patient_id, age, gender, height_cm, weight_kg, smoking_history")
+          .eq("id", patientIdFromCase)
+          .single(),
+        supabase
+          .from("vitals")
+          .select("spo2, respiratory_rate, systolic_bp, diastolic_bp, temperature_f, created_at")
+          .eq("patient_id", patientIdFromCase)
+          .order("created_at", { ascending: false })
+          .limit(1),
+        supabase
+          .from("spirometry")
+          .select("*")
+          .eq("patient_id", patientIdFromCase)
+          .order("created_at", { ascending: false })
+          .limit(1),
+        supabase
+          .from("xrays")
+          .select("file_path, created_at")
+          .eq("patient_id", patientIdFromCase)
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ]);
+      const p = patientRes.data as {
+        name?: string;
+        generated_patient_id?: string | null;
+        age?: number | null;
+        gender?: string | null;
+        height_cm?: number | null;
+        weight_kg?: number | null;
+        smoking_history?: string | null;
+      } | null;
+      const v = vitalsRes.data;
+      const s = spirometryRes.data;
+      const x = xrayRes.data;
+      const specialistNameFromCase = profile?.full_name ?? null;
+      const isCompleted = c.status === "completed" || c.status === "finalized";
+      setViewingPastCaseData({
+        patient: p
+          ? {
+              name: p.name,
+              generated_patient_id: p.generated_patient_id ?? null,
+              age: p.age ?? null,
+              gender: p.gender ?? null,
+              height_cm: p.height_cm ?? null,
+              weight_kg: p.weight_kg ?? null,
+              smoking_history: p.smoking_history ?? null,
+            }
+          : undefined,
+        vitals: (v?.[0] as {
+          spo2?: number | null;
+          respiratory_rate?: number | null;
+          systolic_bp?: number | null;
+          diastolic_bp?: number | null;
+          temperature_f?: number | null;
+          created_at?: string | null;
+        }) ?? null,
         spirometry:
           (s?.[0] as {
             fvc?: number | null;
@@ -555,40 +1160,147 @@ export default function SpecialistDashboardPage() {
             pef?: number | null;
             created_at?: string | null;
           }) ?? null,
-        ctScanRequired: (caseRow as { ct_scan_required?: boolean | null } | null)?.ct_scan_required ?? null,
-        bronchoscopyRequired: (caseRow as { bronchoscopy_required?: boolean | null } | null)?.bronchoscopy_required ?? null,
-        xrayPaths: (x ?? []).map((r) => (r as { file_path: string }).file_path),
+        xrays: (x ?? []).map((r) => ({ path: (r as { file_path: string }).file_path })),
+        rural_diagnosis: c.rural_diagnosis_report ?? null,
+        finalized_report: null,
+        follow_up_notes: null,
+        case_status: c.status ?? null,
+        specialist_name: specialistNameFromCase,
+        specialist_accepted_at: null,
+        specialist_completed_at: null,
+        case_created_at: c.created_at ?? null,
+        diagnosis: (diagnosis as { diagnosis_name?: string | null; severity?: string | null; specialist_notes?: string | null; created_at?: string | null } | null)
+          ? {
+              diagnosis_name: (diagnosis as { diagnosis_name?: string | null }).diagnosis_name ?? null,
+              severity: (diagnosis as { severity?: string | null }).severity ?? null,
+              specialist_notes: (diagnosis as { specialist_notes?: string | null }).specialist_notes ?? null,
+              created_at: (diagnosis as { created_at?: string | null }).created_at ?? null,
+            }
+          : null,
+        treatment: (treatment as {
+          medications?: string | null;
+          inhaler_therapy?: string | null;
+          oxygen_therapy?: boolean | null;
+          pulmonary_rehabilitation?: string | null;
+          lifestyle_recommendations?: string | null;
+          referral_recommendation?: string | null;
+          created_at?: string | null;
+        } | null)
+          ? {
+              treatment_title: null,
+              medications: (treatment as { medications?: string | null }).medications ?? null,
+              inhaler_therapy: (treatment as { inhaler_therapy?: string | null }).inhaler_therapy ?? null,
+              oxygen_therapy: (treatment as { oxygen_therapy?: boolean | null }).oxygen_therapy ?? null,
+              pulmonary_rehabilitation: (treatment as { pulmonary_rehabilitation?: string | null }).pulmonary_rehabilitation ?? null,
+              lifestyle_recommendations: (treatment as { lifestyle_recommendations?: string | null }).lifestyle_recommendations ?? null,
+              referral_recommendation: (treatment as { referral_recommendation?: string | null }).referral_recommendation ?? null,
+              created_at: (treatment as { created_at?: string | null }).created_at ?? null,
+            }
+          : null,
+        prescriptions:
+          (prescriptions as {
+            medication_name?: string | null;
+            dosage?: string | null;
+            frequency?: string | null;
+            duration_days?: string | number | null;
+            instructions?: string | null;
+          }[] | null)?.map((row, idx) => ({
+            id: `rx-${idx}`,
+            medication: row.medication_name ?? null,
+            dosage: row.dosage ?? null,
+            frequency: row.frequency ?? row.instructions ?? null,
+            duration: row.duration_days != null ? String(row.duration_days) : null,
+            instructions: row.instructions ?? null,
+          })) ?? [],
+        followup: (followup as { scheduled_date?: string | null; notes?: string | null; diagnostic_procedures?: string[] | null; created_at?: string | null } | null)
+          ? {
+              scheduled_date: (followup as { scheduled_date?: string | null }).scheduled_date ?? null,
+              notes: (followup as { notes?: string | null }).notes ?? null,
+              diagnostic_procedures: furtherDiagnostics,
+              created_at: (followup as { created_at?: string | null }).created_at ?? null,
+            }
+          : null,
+        specialist_report: isCompleted
+          ? {
+              specialist_name: specialistNameFromCase,
+              diagnosis: diagnosis
+                ? {
+                    primary_diagnosis: (diagnosis as { diagnosis_name?: string | null }).diagnosis_name ?? null,
+                    severity: (diagnosis as { severity?: string | null }).severity ?? null,
+                    clinical_notes: (diagnosis as { specialist_notes?: string | null }).specialist_notes ?? null,
+                    created_at: (diagnosis as { created_at?: string | null }).created_at ?? null,
+                  }
+                : null,
+              treatment: treatment
+                ? {
+                    medications: (treatment as { medications?: string | null }).medications ?? null,
+                    inhaler_therapy: (treatment as { inhaler_therapy?: string | null }).inhaler_therapy ?? null,
+                    oxygen_therapy: (treatment as { oxygen_therapy?: boolean | null }).oxygen_therapy ?? null,
+                    pulmonary_rehab: (treatment as { pulmonary_rehabilitation?: string | null }).pulmonary_rehabilitation ?? null,
+                    lifestyle_advice: (treatment as { lifestyle_recommendations?: string | null }).lifestyle_recommendations ?? null,
+                    referral_recommendation: (treatment as { referral_recommendation?: string | null }).referral_recommendation ?? null,
+                    created_at: (treatment as { created_at?: string | null }).created_at ?? null,
+                  }
+                : null,
+              prescriptions:
+                (prescriptions as {
+                  medication_name?: string | null;
+                  dosage?: string | null;
+                  frequency?: string | null;
+                  duration_days?: string | number | null;
+                  instructions?: string | null;
+                }[] | null)?.map((row, idx) => ({
+                  id: `rx-${idx}`,
+                  medication: row.medication_name ?? null,
+                  dosage: row.dosage ?? null,
+                  frequency: row.frequency ?? row.instructions ?? null,
+                  duration: row.duration_days != null ? String(row.duration_days) : null,
+                  instructions: row.instructions ?? null,
+                })) ?? [],
+              followup: followup
+                ? {
+                    followup_date: (followup as { scheduled_date?: string | null }).scheduled_date ?? null,
+                    created_at: (followup as { created_at?: string | null }).created_at ?? null,
+                    diagnostic_procedures: furtherDiagnostics,
+                  }
+                : null,
+              timeline: {
+                case_created_at: c.created_at ?? null,
+                specialist_accepted_at: null,
+                diagnosis_submitted_at: (diagnosis as { created_at?: string | null })?.created_at ?? null,
+                treatment_generated_at: (treatment as { created_at?: string | null })?.created_at ?? null,
+                followup_scheduled_at: (followup as { created_at?: string | null })?.created_at ?? null,
+                case_finalized_at: null,
+              },
+              specialist_accepted_at: null,
+              specialist_completed_at: null,
+              case_created_at: c.created_at ?? null,
+            }
+          : null,
       });
-    };
-    load();
-  }
-
-  if (!ready) {
-    return (
-      <div className="p-6 text-slate-400">
-        Loading dashboard...
-      </div>
-    );
-  }
+    } finally {
+      setPastCaseLoading(false);
+    }
+  };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex min-h-screen h-screen will-change-auto bg-gray-50">
       <aside className="w-64 h-screen bg-white shadow-md border-r border-gray-200 p-6 flex flex-col justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-800">Tele-Pulmonology</h1>
-          <p className="text-sm text-gray-600 mt-1">Specialist Dashboard</p>
+          <p className="text-sm text-gray-800 mt-1">Specialist Dashboard</p>
           <div className="mt-8 space-y-2">
             <button
               type="button"
               onClick={() => {
                 setViewState("list");
-                setViewingPastCaseId(null);
-                setPastCaseDetail(null);
+                setViewingPastCaseData(null);
+                viewingPastCaseIdRef.current = null;
               }}
               className={`w-full text-left rounded-xl px-4 py-3 text-sm font-medium ${
                 viewState === "list" || viewState === "accept" || viewState === "review"
                   ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-700 border border-gray-200"
+                  : "bg-white text-gray-800 border border-gray-200"
               }`}
             >
               Active Requests
@@ -597,13 +1309,13 @@ export default function SpecialistDashboardPage() {
               type="button"
               onClick={() => {
                 setViewState("past");
-                setViewingPastCaseId(null);
-                setPastCaseDetail(null);
+                setViewingPastCaseData(null);
+                viewingPastCaseIdRef.current = null;
               }}
               className={`w-full text-left rounded-xl px-4 py-3 text-sm font-medium ${
-                viewState === "past" || Boolean(viewingPastCaseId)
+                viewState === "past" || Boolean(viewingPastCaseData)
                   ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-700 border border-gray-200"
+                  : "bg-white text-gray-800 border border-gray-200"
               }`}
             >
               Past Cases
@@ -636,9 +1348,9 @@ export default function SpecialistDashboardPage() {
       </div>
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
-      {viewState === "list" && !viewingPastCaseId && (
+      {viewState === "list" && (
         <>
-          <section className="bg-white shadow-md rounded-xl p-6">
+          <section className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
             <h2 className="text-sm font-semibold text-gray-800">ACTIVE REQUESTS</h2>
             <div className="mt-2 flex gap-2">
               <button
@@ -647,7 +1359,7 @@ export default function SpecialistDashboardPage() {
                 className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === "emergency"
                     ? "bg-red-600 text-white"
-                    : "border border-gray-300 bg-white/70 text-gray-700 hover:bg-blue-50"
+                    : "border border-gray-300 bg-white/70 text-gray-800 hover:bg-blue-50 border border-blue-200"
                 }`}
               >
                 Emergency {emergencyPending.length > 0 && `(${emergencyPending.length})`}
@@ -658,7 +1370,7 @@ export default function SpecialistDashboardPage() {
                 className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                   activeTab === "normal"
                     ? "bg-blue-600 text-white"
-                    : "border border-gray-300 bg-white/70 text-gray-700 hover:bg-blue-50"
+                    : "border border-gray-300 bg-white/70 text-gray-800 hover:bg-blue-50 border border-blue-200"
                 }`}
               >
                 Normal {normalPending.length > 0 && `(${normalPending.length})`}
@@ -666,7 +1378,7 @@ export default function SpecialistDashboardPage() {
             </div>
             <div className="mt-4 space-y-3">
               {activeList.length === 0 ? (
-                <div className="bg-white shadow-md rounded-xl p-6 text-gray-700">
+            <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6 text-gray-800">
                   No {activeTab === "emergency" ? "emergency" : "normal"} requests at the moment.
                 </div>
               ) : (
@@ -687,9 +1399,9 @@ export default function SpecialistDashboardPage() {
                             {r.case_priority === "emergency" ? "Emergency" : "Normal"}
                           </span>
                         </div>
-                        <div className="text-gray-600">Submitted: {r.created_at ? new Date(r.created_at).toLocaleString() : "-"}</div>
-                        <div className="text-gray-600">Rural Doctor: {r.ruralDoctorName ?? "-"}</div>
-                        <div className="text-gray-600">Message: {r.rural_message ?? "-"}</div>
+                        <div className="text-gray-800">Submitted: {r.created_at ? new Date(r.created_at).toLocaleString() : "-"}</div>
+                        <div className="text-gray-800">Rural Doctor: {r.ruralDoctorName ?? "-"}</div>
+                        <div className="text-gray-800">Message: {r.rural_message ?? "-"}</div>
                       </div>
                       <button
                         type="button"
@@ -705,14 +1417,14 @@ export default function SpecialistDashboardPage() {
             </div>
             {acceptedRequests.length > 0 && (
               <div className="mt-4">
-                <h3 className="text-xs font-medium text-gray-600">In progress (accepted, not yet completed)</h3>
+                <h3 className="text-xs font-medium text-gray-800">In progress (accepted, not yet completed)</h3>
                 <div className="mt-2 space-y-2">
                   {acceptedRequests.map((r) => (
                     <div
                       key={r.id}
                       className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
                     >
-                      <span className="text-gray-700">{r.patient_name ?? "-"}</span>
+                      <span className="text-gray-800">{r.patient_name ?? "-"}</span>
                       <span className="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700">Accepted</span>
                       <button
                         type="button"
@@ -730,8 +1442,8 @@ export default function SpecialistDashboardPage() {
         </>
       )}
 
-      {viewState === "past" && !viewingPastCaseId && (
-        <section className="bg-white shadow-md rounded-xl p-6">
+      {viewState === "past" && !viewingPastCaseData && !pastCaseLoading && (
+          <section className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
           <h2 className="text-sm font-semibold text-gray-800">PAST CASES</h2>
           <div className="mt-4">
             <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-y-auto overflow-x-hidden" style={{ maxHeight: 480 }}>
@@ -747,19 +1459,19 @@ export default function SpecialistDashboardPage() {
                 </thead>
                 <tbody>
                   {pastRequests.map((r, i) => (
-                    <tr key={r.id} className="hover:bg-blue-50 transition border-b border-blue-100">
-                      <td className="px-4 py-3 text-gray-700">{i + 1}</td>
-                      <td className="px-4 py-3 text-gray-700">{r.generated_patient_id ?? "-"}</td>
-                      <td className="px-4 py-3 text-gray-700">
+                    <tr key={r.id} className="hover:bg-blue-50 border border-blue-200 transition border-b border-blue-100">
+                      <td className="px-4 py-3 text-gray-800">{i + 1}</td>
+                      <td className="px-4 py-3 text-gray-800">{r.generated_patient_id ?? "-"}</td>
+                      <td className="px-4 py-3 text-gray-800">
                         <span className={r.case_priority === "emergency" ? "px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700" : "px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"}>
                           {r.case_priority === "emergency" ? "Emergency" : "Normal"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-700">{r.ruralDoctorName}</td>
-                      <td className="px-4 py-3 text-gray-700">
+                      <td className="px-4 py-3 text-gray-800">{r.ruralDoctorName}</td>
+                      <td className="px-4 py-3 text-gray-800">
                         <button
                           type="button"
-                          onClick={() => handleViewPastDetails(r)}
+                          onClick={() => loadFullCaseSummary(r.case_id, r.patient_id ?? "")}
                           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
                         >
                           View Details
@@ -776,14 +1488,14 @@ export default function SpecialistDashboardPage() {
 
       {viewState === "accept" ? (
         selectedRequest ? (
-          <div className="bg-white shadow-md rounded-xl p-6">
-          <h2 className="text-lg font-semibold text-gray-800">Accept Request</h2>
-          <p className="mt-1 text-sm text-gray-600">
+            <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-gray-900">Accept Request</h2>
+          <p className="mt-1 text-sm text-gray-800">
             Patient: {selectedRequest.patient_name ?? "-"} - {selectedRequest.case_priority === "emergency" ? "Emergency" : "Normal"}
           </p>
           <form onSubmit={handleAcceptRequest} className="mt-4 space-y-4">
             <div>
-              <label className="block text-sm text-gray-600">Message (optional)</label>
+              <label className="block text-sm text-gray-800">Message (optional)</label>
               <textarea
                 rows={3}
                 className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500"
@@ -799,7 +1511,7 @@ export default function SpecialistDashboardPage() {
                   setSelectedRequest(null);
                   setViewState("list");
                 }}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 hover:bg-gray-100"
               >
                 Cancel
               </button>
@@ -814,7 +1526,7 @@ export default function SpecialistDashboardPage() {
           </form>
           </div>
         ) : (
-          <div className="p-6 text-slate-400">Loading request...</div>
+          <RequestSkeleton />
         )
       ) : null}
 
@@ -825,15 +1537,16 @@ export default function SpecialistDashboardPage() {
             type="button"
             onClick={() => {
               setReviewData(null);
+              resetExtendedReviewState();
               setViewState("list");
             }}
             className="text-sm text-slate-600 hover:text-slate-800"
           >
             Back to requests
           </button>
-          <div className="space-y-6">
-            <div className="bg-white shadow-md rounded-xl p-6">
-              <h2 className="text-lg font-semibold text-gray-800">
+          <div className="space-y-6 max-w-6xl mx-auto">
+            <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-gray-900">
                 {reviewData.patientName ?? "Patient"} ({reviewData.generatedPatientId ?? "-"})
               </h2>
               <div className="mt-2 flex items-center gap-2">
@@ -843,11 +1556,23 @@ export default function SpecialistDashboardPage() {
               </div>
             </div>
 
+            <CaseTimeline
+              caseId={reviewData.caseId}
+              timestamps={{
+                caseCreated: reviewRequest?.created_at ?? null,
+                specialistAssigned: reviewRequest?.accepted_at ?? null,
+                diagnosisCompleted: timelineLocalTimestamps.diagnosisCompleted ?? null,
+                treatmentGenerated: timelineLocalTimestamps.treatmentGenerated ?? null,
+                followupScheduled: timelineLocalTimestamps.followupScheduled ?? null,
+                caseFinalized: reviewRequest?.completed_at ?? null,
+              }}
+            />
+
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="space-y-4">
-                <div className="bg-white shadow-md rounded-xl p-6">
+                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
                   <h3 className="text-sm font-semibold text-gray-800 mb-3">Patient Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-700">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-800">
                     <div className="bg-white rounded-xl p-3 border border-gray-200">Name: {reviewData.patientName ?? "-"}</div>
                     <div className="bg-white rounded-xl p-3 border border-gray-200">Age: {reviewData.patientMeta.age ?? "-"}</div>
                     <div className="bg-white rounded-xl p-3 border border-gray-200">Gender: {reviewData.patientMeta.gender ?? "-"}</div>
@@ -856,18 +1581,26 @@ export default function SpecialistDashboardPage() {
                   </div>
                 </div>
 
-                <div className="bg-white shadow-md rounded-xl p-6">
+                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
                   <h3 className="text-sm font-semibold text-gray-800 mb-2">Clinical History</h3>
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{reviewData.patientHistory ?? "-"}</p>
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{reviewData.patientHistory ?? "-"}</p>
                 </div>
 
-                <div className="bg-white shadow-md rounded-xl p-6">
+                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
                   <h3 className="text-sm font-semibold text-gray-800 mb-2">Vitals & Spirometry</h3>
-                  <div className="space-y-2 text-sm text-gray-600">
+                  <div className="space-y-2 text-sm text-gray-800">
                     {reviewData.vitals.length === 0 && reviewData.spirometry.length === 0 && <div>-</div>}
                     {reviewData.vitals.map((v, i) => (
-                      <div key={`vital-${i}`}>
-                        SpO2: {v.spo2 == null ? "-" : `${v.spo2}%`} | Respiratory Rate: {v.respiratory_rate == null ? "-" : `${v.respiratory_rate} breaths/min`}
+                      <div key={`vital-${i}`} className="space-y-1">
+                        <div>
+                          BP: {v.systolic_bp ?? "-"} / {v.diastolic_bp ?? "-"} mmHg
+                        </div>
+                        <div>
+                          Temperature: {v.temperature_f ?? "-"} °F
+                        </div>
+                        <div>
+                          SpO2: {v.spo2 == null ? "-" : `${v.spo2}%`} | Respiratory Rate: {v.respiratory_rate == null ? "-" : `${v.respiratory_rate} breaths/min`}
+                        </div>
                       </div>
                     ))}
                     {reviewData.spirometry.map((s, i) => (
@@ -878,17 +1611,17 @@ export default function SpecialistDashboardPage() {
                   </div>
                 </div>
 
-                <div className="bg-white shadow-md rounded-xl p-6">
+                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
                   <h3 className="text-sm font-semibold text-gray-800 mb-2">Rural Doctor Diagnosis</h3>
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{reviewData.ruralDiagnosis ?? "-"}</p>
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{reviewData.ruralDiagnosis ?? "-"}</p>
                 </div>
               </div>
 
               <div className="space-y-4">
-                <div className="bg-white shadow-md rounded-xl p-4">
+                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-4">
                   <h3 className="text-sm font-semibold text-gray-800 mb-2">X-Ray Viewer</h3>
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-gray-600 truncate">
+                    <p className="text-sm text-gray-800 truncate">
                       File: {reviewData.xrayPaths[0] ? reviewData.xrayPaths[0].split("/").pop() : "-"}
                     </p>
                     <button
@@ -901,176 +1634,285 @@ export default function SpecialistDashboardPage() {
                   </div>
                 </div>
 
-                <div className="bg-white shadow-md rounded-xl p-5">
-                  <h3 className="text-sm font-semibold text-gray-800">Specialist Diagnosis Report</h3>
-                  <label className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={furtherDiagnosisRequired}
-                      onChange={(e) => setFurtherDiagnosisRequired(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
-                    />
-                    Further diagnosis required
-                  </label>
-                  {furtherDiagnosisRequired && (
-                    <div className="mt-2 space-y-2 text-sm text-gray-600">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={furtherDiagnosisTypes.ctScan}
-                          onChange={(e) =>
-                            setFurtherDiagnosisTypes((prev) => ({ ...prev, ctScan: e.target.checked }))
-                          }
-                          className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
-                        />
-                        CT Scan Required
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={furtherDiagnosisTypes.bronchoscopy}
-                          onChange={(e) =>
-                            setFurtherDiagnosisTypes((prev) => ({ ...prev, bronchoscopy: e.target.checked }))
-                          }
-                          className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-primary"
-                        />
-                        Bronchoscopy Required
-                      </label>
-                    </div>
-                  )}
-                  <textarea
-                    rows={8}
-                    className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 bg-white placeholder:text-gray-400 mt-3 focus:ring-2 focus:ring-blue-500"
-                    value={specialistDiagnosisReport}
-                    onChange={(e) => setSpecialistDiagnosisReport(e.target.value)}
-                    placeholder="Your diagnosis and recommendations..."
-                  />
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={handleFinishCase}
-                      disabled={finishing}
-                      className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-500 disabled:opacity-50"
-                    >
-                      Finish
-                    </button>
-                  </div>
-                </div>
               </div>
             </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="col-span-2">
+                <DiagnosisPanel
+                  templates={diagnosisTemplates}
+                  value={diagnosisForm}
+                  loading={templatesLoading}
+                  saving={diagnosisSaving}
+                  onChange={setDiagnosisForm}
+                  onSave={saveCaseDiagnosis}
+                />
+              </div>
+              <div className="col-span-2">
+                <TreatmentPanel
+                  value={treatmentForm}
+                  templateTitle={treatmentForm.treatmentTitle}
+                  loading={templateDependentLoading}
+                  saving={treatmentSaving}
+                  onChange={setTreatmentForm}
+                  onSave={saveTreatmentPlan}
+                />
+              </div>
+            </div>
+
+            <PrescriptionPanel
+              rows={prescriptionRows}
+              loading={templateDependentLoading}
+              saving={prescriptionSaving}
+              onChangeRow={(id, field, value) => {
+                setPrescriptionRows((prev) =>
+                  prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+                );
+              }}
+              onAddRow={() =>
+                setPrescriptionRows((prev) => [
+                  ...prev,
+                  { id: `rx-${Date.now()}-${prev.length}`, medication: "", dosage: "", frequency: "", duration: "", notes: "" },
+                ])
+              }
+              onRemoveRow={(id) =>
+                setPrescriptionRows((prev) => {
+                  if (prev.length === 1) return [{ id: prev[0].id, medication: "", dosage: "", frequency: "", duration: "", notes: "" }];
+                  return prev.filter((row) => row.id !== id);
+                })
+              }
+              onSave={savePrescription}
+            />
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="col-span-2">
+                <FurtherDiagnosticsChecklistPanel
+                  furtherDiagnostics={furtherDiagnosticsTests}
+                  customFurtherDiagnosticInput={furtherDiagnosticsCustomInput}
+                  onCustomFurtherDiagnosticInputChange={setFurtherDiagnosticsCustomInput}
+                  onAddCustomFurtherDiagnostic={() => {
+                    const value = furtherDiagnosticsCustomInput.trim();
+                    if (!value) return;
+                    setFurtherDiagnosticsTests((prev) => (prev.includes(value) ? prev : [...prev, value]));
+                    setFurtherDiagnosticsCustomInput("");
+                  }}
+                  onRemoveFurtherDiagnostic={(index) =>
+                    setFurtherDiagnosticsTests((prev) => prev.filter((_, idx) => idx !== index))
+                  }
+                />
+              </div>
+              <div className="col-span-2">
+                <FollowupPanel
+                  interval={followupInterval}
+                  date={followupDate}
+                  notes={followupNotes}
+                  saving={followupSaving}
+                  onIntervalChange={setFollowupInterval}
+                  onDateChange={setFollowupDate}
+                  onNotesChange={setFollowupNotes}
+                  onSave={saveFollowup}
+                />
+              </div>
+            </div>
+
+            <div className="mt-12 flex justify-center">
+              <button
+                type="button"
+                onClick={handleFinishCase}
+                disabled={finishing}
+                className="rounded-lg bg-blue-600 px-6 py-3 text-white transition hover:bg-blue-500 disabled:opacity-50"
+              >
+                {finishing ? "Finishing..." : "Finish"}
+              </button>
+            </div>
+
           </div>
           </div>
         ) : (
-          <div className="p-6 text-slate-400">Loading request...</div>
+          <DiagnosisSkeleton />
         )
       ) : null}
 
-      {viewState === "past" && viewingPastCaseId && !pastCaseDetail ? (
-        <div className="p-6 text-slate-400">
-          Loading case details...
-        </div>
+      {viewState === "past" && pastCaseLoading ? (
+        <DiagnosisSkeleton />
       ) : null}
 
-      {viewingPastCaseId && !pastCaseDetail && (
-        <div className="text-slate-400 p-6">
-          Select a case to view details.
-        </div>
-      )}
-
-      {viewingPastCaseId && pastCaseDetail && (
-        <div className="space-y-4">
+      {viewState === "past" && viewingPastCaseData ? (
+        <div className="space-y-6 max-w-6xl mx-auto">
           <button
             type="button"
             onClick={() => {
-              setViewingPastCaseId(null);
-              setPastCaseDetail(null);
+              setViewingPastCaseData(null);
+              viewingPastCaseIdRef.current = null;
               setViewState("past");
             }}
             className="text-sm text-slate-600 hover:text-slate-800"
           >
             Back to Past Cases
           </button>
-          <div className="bg-white shadow-md rounded-xl p-6">
-            <h2 className="text-lg font-semibold text-slate-800">{pastCaseDetail?.patientName ?? "Patient"}</h2>
-            <p className="text-sm text-slate-600">Patient ID: {pastCaseDetail?.generatedPatientId ?? "-"}</p>
-            <div className="mt-4 grid gap-4 text-sm">
-              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-700">Patient Information</h3>
-                <div className="mt-2 grid gap-1 text-slate-700">
-                  <div>Name: {pastCaseDetail.patientName ?? "-"}</div>
-                  <div>Patient ID: {pastCaseDetail.generatedPatientId ?? "-"}</div>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="col-span-1 rounded-xl border bg-white p-6 shadow-sm md:col-span-2">
+              <h2 className="mb-3 text-lg font-semibold text-gray-900">Patient Summary</h2>
+              <h1 className="text-2xl font-semibold">{viewingPastCaseData.patient?.name ?? "Patient"}</h1>
+              <p className="mt-1 text-gray-800">Patient ID: {viewingPastCaseData.patient?.generated_patient_id ?? "Not Provided"}</p>
+              <div className="mt-3">
+                <span
+                  className={`rounded-full px-3 py-1 text-sm font-medium ${
+                    viewingPastCaseData.case_status === "finalized" ? "bg-green-100 text-green-600" : "bg-blue-100 text-blue-600"
+                  }`}
+                >
+                  {viewingPastCaseData.case_status === "finalized" ? "Completed Case" : "In Progress Case"}
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="rounded-xl border bg-white p-6 shadow-sm">
+                  <h3 className="mb-4 text-lg text-black font-semibold">Patient Information</h3>
+                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Name:</span> {viewingPastCaseData.patient?.name ?? "Not Provided"}</p>
+                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Patient ID:</span> {viewingPastCaseData.patient?.generated_patient_id ?? "Not Provided"}</p>
+                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Age:</span> {viewingPastCaseData.patient?.age ?? "Not Provided"}</p>
+                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Gender:</span> {viewingPastCaseData.patient?.gender ?? "Not Provided"}</p>
+                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Height:</span> {viewingPastCaseData.patient?.height_cm ?? "Not Provided"} cm</p>
+                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Weight:</span> {viewingPastCaseData.patient?.weight_kg ?? "Not Provided"} kg</p>
+                </div>
+                <div className="rounded-xl border bg-white p-6 shadow-sm">
+                  <h3 className="mb-4 text-lg font-semibold text-gray-900">Clinical History</h3>
+                  <p className="leading-relaxed text-gray-800">{viewingPastCaseData.patient?.smoking_history ?? "Not Provided"}</p>
                 </div>
               </div>
-              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-700">Clinical History</h3>
-                <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.patientHistory ?? "-"}</p>
-              </div>
-              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-700">Vitals</h3>
-                <div className="mt-2 grid gap-1 text-slate-700">
-                  <div>SpO2: {pastCaseDetail.vitals?.spo2 == null ? "-" : `${pastCaseDetail.vitals.spo2}%`}</div>
-                  <div>
-                    Respiratory Rate:{" "}
-                    {pastCaseDetail.vitals?.respiratory_rate == null
-                      ? "-"
-                      : `${pastCaseDetail.vitals.respiratory_rate} breaths/min`}
-                  </div>
-                  <div>FVC: {pastCaseDetail.spirometry?.fvc == null ? "-" : `${pastCaseDetail.spirometry.fvc} L`}</div>
-                  <div>FEV1: {pastCaseDetail.spirometry?.fev1 == null ? "-" : `${pastCaseDetail.spirometry.fev1} L`}</div>
-                  <div>
-                    FEV1 / FVC:{" "}
-                    {pastCaseDetail.spirometry?.fev1_fvc == null ? "-" : `${pastCaseDetail.spirometry.fev1_fvc}%`}
-                  </div>
-                  <div>
-                    FEV1 / FEV6:{" "}
-                    {pastCaseDetail.spirometry?.fev1_fev6 == null ? "-" : `${pastCaseDetail.spirometry.fev1_fev6}%`}
-                  </div>
-                  <div>PEF: {pastCaseDetail.spirometry?.pef == null ? "-" : `${pastCaseDetail.spirometry.pef} L/min`}</div>
+            </div>
+
+            <div className="col-span-1 rounded-xl border bg-white p-6 shadow-sm md:col-span-2">
+              <h2 className="mb-4 text-lg font-semibold text-gray-900">Clinical Vitals</h2>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">BP</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {viewingPastCaseData.vitals?.systolic_bp ?? "-"} / {viewingPastCaseData.vitals?.diastolic_bp ?? "-"} mmHg
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">Temperature</p>
+                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.vitals?.temperature_f ?? "-"} °F</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">SpO2</p>
+                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.vitals?.spo2 == null ? "—" : `${viewingPastCaseData.vitals.spo2}%`}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">Resp Rate</p>
+                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.vitals?.respiratory_rate == null ? "—" : viewingPastCaseData.vitals.respiratory_rate}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">FVC</p>
+                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.fvc == null ? "—" : `${viewingPastCaseData.spirometry.fvc} L`}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">FEV1</p>
+                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.fev1 == null ? "—" : `${viewingPastCaseData.spirometry.fev1} L`}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">FEV1/FVC</p>
+                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.fev1_fvc == null ? "—" : `${viewingPastCaseData.spirometry.fev1_fvc}%`}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">FEV1/FEV6</p>
+                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.fev1_fev6 == null ? "—" : `${viewingPastCaseData.spirometry.fev1_fev6}%`}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
+                  <p className="text-xs text-gray-800">PEF</p>
+                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.pef == null ? "—" : `${viewingPastCaseData.spirometry.pef} L/min`}</p>
                 </div>
               </div>
-              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-700">Rural Diagnosis</h3>
-                <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.ruralDiagnosis ?? "-"}</p>
+            </div>
+
+            <div className="col-span-1 rounded-xl border border-blue-200 bg-blue-50 border border-blue-200 p-6 md:col-span-2">
+              <h2 className="mb-3 text-lg font-semibold text-gray-900">Rural Diagnosis</h2>
+              <p className="leading-relaxed text-gray-800">{viewingPastCaseData.rural_diagnosis ?? "Not Provided"}</p>
+            </div>
+
+            <div className="col-span-1 rounded-xl border border-green-200 bg-green-50 border border-green-200 p-6 md:col-span-2">
+              <h2 className="mb-3 text-lg font-semibold text-gray-900">Specialist Diagnosis</h2>
+              <div className="space-y-2 text-gray-800">
+                <p><strong>Primary Diagnosis:</strong> {viewingPastCaseData.diagnosis?.diagnosis_name ?? "Not Provided"}</p>
+                <p><strong>Severity:</strong> {viewingPastCaseData.diagnosis?.severity ?? "Not Provided"}</p>
+                <p><strong>Specialist:</strong> {viewingPastCaseData.specialist_name ?? "Not Provided"}</p>
+                <p><strong>Diagnosis Timestamp:</strong> {viewingPastCaseData.diagnosis?.created_at ?? "Not Provided"}</p>
+                <p><strong>Clinical Notes:</strong> {viewingPastCaseData.diagnosis?.specialist_notes ?? "Not Provided"}</p>
               </div>
-              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-700">Specialist Diagnosis</h3>
-                <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.specialistDiagnosis ?? "-"}</p>
-              </div>
-              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-700">Recommended Further Investigations</h3>
-                <div className="mt-2 space-y-2 text-slate-700">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={Boolean(pastCaseDetail.ctScanRequired)} readOnly />
-                    CT Scan
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={Boolean(pastCaseDetail.bronchoscopyRequired)} readOnly />
-                    Bronchoscopy
-                  </label>
+            </div>
+
+            {(viewingPastCaseData.case_status === "completed" || viewingPastCaseData.case_status === "finalized") && (
+              <>
+                <div className="col-span-1 md:col-span-2">
+                  <TreatmentViewer
+                    medications={viewingPastCaseData.treatment?.medications ?? null}
+                    inhalerTherapy={viewingPastCaseData.treatment?.inhaler_therapy ?? null}
+                    oxygenTherapy={viewingPastCaseData.treatment?.oxygen_therapy ?? null}
+                    pulmonaryRehab={viewingPastCaseData.treatment?.pulmonary_rehabilitation ?? null}
+                    lifestyleAdvice={viewingPastCaseData.treatment?.lifestyle_recommendations ?? null}
+                    referralNotes={viewingPastCaseData.treatment?.referral_recommendation ?? null}
+                  />
                 </div>
-              </div>
-              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-700">Follow-up Notes</h3>
-                <p className="mt-2 whitespace-pre-wrap text-slate-700">{pastCaseDetail.followUps ?? "-"}</p>
-              </div>
-              <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm">
-                <h3 className="text-sm font-medium text-slate-700">X-ray Image</h3>
-                {pastCaseDetail.xrayPaths?.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => openXrayModal(pastCaseDetail.xrayPaths[0])}
-                    className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
-                  >
-                    View X-ray
-                  </button>
-                ) : (
-                  <p className="mt-2 text-slate-400">-</p>
-                )}
-              </div>
+                <div className="col-span-1 md:col-span-2">
+                  <PrescriptionViewer rows={viewingPastCaseData.prescriptions ?? []} />
+                </div>
+                <div className="rounded-xl border bg-white p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-900">Recommended Further Investigations</h3>
+                  {(viewingPastCaseData.followup?.diagnostic_procedures?.length ?? 0) === 0 ? (
+                    <p className="text-sm text-gray-800">Not Provided</p>
+                  ) : (
+                    <ol className="list-decimal ml-5 text-sm text-gray-800 space-y-1">
+                      {(viewingPastCaseData.followup?.diagnostic_procedures ?? []).map((test, idx) => (
+                        <li key={idx}>{test}</li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+                <div className="col-span-1 md:col-span-2 space-y-4">
+                  <FollowupTracker nextFollowupDate={viewingPastCaseData.followup?.scheduled_date ?? null} />
+                  <div className="rounded-xl border bg-white p-6 shadow-sm">
+                    <h3 className="text-lg font-semibold text-gray-900">Notes</h3>
+                    <p className="mt-2 whitespace-pre-wrap text-gray-800">{viewingPastCaseData.followup?.notes ?? "Not Provided"}</p>
+                  </div>
+                </div>
+                <div className="col-span-1 md:col-span-2">
+                  <CaseTimeline
+                    caseId={viewingPastCaseIdRef.current}
+                    timestamps={{
+                      caseCreated: viewingPastCaseData.case_created_at ?? null,
+                      specialistAssigned: viewingPastCaseData.specialist_accepted_at ?? null,
+                      diagnosisCompleted: viewingPastCaseData.diagnosis?.created_at ?? null,
+                      treatmentGenerated: viewingPastCaseData.treatment?.created_at ?? null,
+                      followupScheduled: viewingPastCaseData.followup?.created_at ?? null,
+                      caseFinalized: viewingPastCaseData.case_status === "finalized" ? viewingPastCaseData.specialist_completed_at ?? null : null,
+                    }}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="col-span-1 rounded-xl border bg-white p-6 shadow-sm md:col-span-2">
+              <h3 className="text-lg font-semibold text-gray-900">X-ray Viewer</h3>
+              {viewingPastCaseData.xrays && viewingPastCaseData.xrays.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setXrayUrl(null);
+                    setXrayPath(viewingPastCaseData.xrays?.[0]?.path ?? null);
+                    setShowXrayModal(true);
+                  }}
+                  className="mt-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+                >
+                  View X-ray
+                </button>
+              ) : (
+                <p className="mt-2 text-gray-800">Not Provided</p>
+              )}
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       <DicomViewer
         isOpen={showXrayModal}
@@ -1086,5 +1928,3 @@ export default function SpecialistDashboardPage() {
     </div>
   );
 }
-
-
