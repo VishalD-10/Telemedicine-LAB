@@ -1162,18 +1162,18 @@ export default function RuralDashboardPage() {
           treatment: (treatment as { medications?: string | null; inhaler_therapy?: string | null; oxygen_therapy?: boolean | null; pulmonary_rehabilitation?: string | null; lifestyle_recommendations?: string | null; referral_recommendation?: string | null; created_at?: string | null } | null)
             ? {
                 treatment_title: null,
-                medications: (treatment as { medications?: string | null }).medications ?? null,
-                inhaler_therapy: (treatment as { inhaler_therapy?: string | null }).inhaler_therapy ?? null,
+                medications: treatment?.medications ?? null,
+                inhaler_therapy: treatment?.inhaler_therapy ?? null,
                 oxygen_therapy:
-                  (treatment as { oxygen_therapy?: boolean | null }).oxygen_therapy === true
+                  treatment?.oxygen_therapy === true
                     ? "Required"
-                    : (treatment as { oxygen_therapy?: boolean | null }).oxygen_therapy === false
+                    : treatment?.oxygen_therapy === false
                       ? "Not Required"
                       : null,
-                pulmonary_rehabilitation: (treatment as { pulmonary_rehabilitation?: string | null }).pulmonary_rehabilitation ?? null,
-                lifestyle_recommendations: (treatment as { lifestyle_recommendations?: string | null }).lifestyle_recommendations ?? null,
-                referral_recommendation: (treatment as { referral_recommendation?: string | null }).referral_recommendation ?? null,
-                created_at: (treatment as { created_at?: string | null }).created_at ?? null,
+                pulmonary_rehabilitation: treatment?.pulmonary_rehabilitation ?? null,
+                lifestyle_recommendations: treatment?.lifestyle_recommendations ?? null,
+                referral_recommendation: treatment?.referral_recommendation ?? null,
+                created_at: treatment?.created_at ?? null,
               }
             : null,
           prescriptions:
