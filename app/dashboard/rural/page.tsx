@@ -848,8 +848,8 @@ export default function RuralDashboardPage() {
             medications: (treatment.medications as string | undefined) ?? null,
             inhaler_therapy: (treatment.inhaler_therapy as string | undefined) ?? null,
             oxygen_therapy: (treatment.oxygen_therapy as boolean | undefined) ?? null,
-            pulmonary_rehab: (treatment.pulmonary_rehabilitation as string | undefined) ?? null,
-            lifestyle_advice: (treatment.lifestyle_recommendations as string | undefined) ?? null,
+            pulmonary_rehabilitation: (treatment.pulmonary_rehabilitation as string | undefined) ?? null,
+            lifestyle_recommendations: (treatment.lifestyle_recommendations as string | undefined) ?? null,
             referral_recommendation: (treatment.referral_recommendation as string | undefined) ?? null,
             created_at: (treatment.created_at as string | undefined) ?? null,
           }
