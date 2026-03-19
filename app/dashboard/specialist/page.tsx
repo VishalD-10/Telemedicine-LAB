@@ -1848,7 +1848,13 @@ export default function SpecialistDashboardPage() {
                   <TreatmentViewer
                     medications={viewingPastCaseData.treatment?.medications ?? null}
                     inhalerTherapy={viewingPastCaseData.treatment?.inhaler_therapy ?? null}
-                    oxygenTherapy={viewingPastCaseData.treatment?.oxygen_therapy ?? null}
+                    oxygenTherapy={
+                      viewingPastCaseData.treatment?.oxygen_therapy === true
+                        ? "Required"
+                        : viewingPastCaseData.treatment?.oxygen_therapy === false
+                          ? "Not Required"
+                          : null
+                    }
                     pulmonaryRehab={viewingPastCaseData.treatment?.pulmonary_rehabilitation ?? null}
                     lifestyleAdvice={viewingPastCaseData.treatment?.lifestyle_recommendations ?? null}
                     referralNotes={viewingPastCaseData.treatment?.referral_recommendation ?? null}
