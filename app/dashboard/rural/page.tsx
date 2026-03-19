@@ -113,7 +113,14 @@ export default function RuralDashboardPage() {
       weight_kg?: number | null;
       smoking_history?: string | null;
     };
-    vitals?: { spo2?: number | null; respiratory_rate?: number | null; created_at?: string | null } | null;
+    vitals?: {
+      spo2?: number | null;
+      respiratory_rate?: number | null;
+      systolic_bp?: number | null;
+      diastolic_bp?: number | null;
+      temperature_f?: number | null;
+      created_at?: string | null;
+    } | null;
     spirometry?: {
       fvc?: number | null;
       fev1?: number | null;
