@@ -1,4 +1,4 @@
-﻿﻿"use client";
+"use client";
 
 import { FormEvent, useEffect, useRef, useState, type ChangeEvent } from "react";
 import dynamic from "next/dynamic";
@@ -366,13 +366,13 @@ export default function RuralDashboardPage() {
 
   useEffect(() => {
     if (!statusMessage) return;
-    const timer = setTimeout(() => setStatusMessage(null), 3000);
+    const timer = setTimeout(() => setStatusMessage(null), 5500);
     return () => clearTimeout(timer);
   }, [statusMessage]);
 
   useEffect(() => {
     if (!errorMessage) return;
-    const timer = setTimeout(() => setErrorMessage(null), 3000);
+    const timer = setTimeout(() => setErrorMessage(null), 5500);
     return () => clearTimeout(timer);
   }, [errorMessage]);
 
@@ -956,8 +956,15 @@ export default function RuralDashboardPage() {
     if (view !== "waiting" || !waitingCaseId) return;
     completedNoticeRef.current = null;
     let interval: NodeJS.Timeout;
+    let isFirstFetch = true;
     const fetchRequest = async () => {
-      setCaseResolved(false);
+      // Only show the loading state on the very first fetch.
+      // Subsequent poll intervals update silently in the background
+      // to avoid the visible flash/glitch every 5 seconds.
+      if (isFirstFetch) {
+        setCaseResolved(false);
+        isFirstFetch = false;
+      }
       try {
         const { data: request } = await supabase
           .from("specialist_requests")
@@ -990,26 +997,40 @@ export default function RuralDashboardPage() {
           : typeof diagnosticsValue === "string"
             ? diagnosticsValue.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean)
             : [];
-        setWaitingReport({
-          diagnosis: diagnosisRes.data ?? null,
-          treatment: treatmentRes.data ?? null,
-          prescriptions: prescriptionRes.data ?? [],
-          followup: followupRes.data ?? null,
-          furtherDiagnostics,
+        setWaitingReport((prev) => {
+          const rep = {
+            diagnosis: diagnosisRes.data ?? null,
+            treatment: treatmentRes.data ?? null,
+            prescriptions: prescriptionRes.data ?? [],
+            followup: followupRes.data ?? null,
+            furtherDiagnostics,
+          };
+          return JSON.stringify(prev) === JSON.stringify(rep) ? prev : rep;
         });
+        
         const completedAt = (request as { completed_at?: string | null })?.completed_at ?? null;
+        if (completedAt) {
+          clearInterval(interval);
+        }
+        
         const detail = await loadClinicalPanelsForCase(
           waitingCaseId,
           completedAt ? "completed" : null
         );
-        setWaitingRequest({
-          specialist_name: null,
-          rural_message: null,
-          specialist_message: (request as { specialist_message?: string | null })?.specialist_message ?? null,
-          accepted_at: (request as { accepted_at?: string | null })?.accepted_at ?? null,
-          completed_at: (request as { completed_at?: string | null })?.completed_at ?? null,
+        
+        setWaitingRequest((prev) => {
+          const newReq = {
+            specialist_name: null,
+            rural_message: null,
+            specialist_message: (request as { specialist_message?: string | null })?.specialist_message ?? null,
+            accepted_at: (request as { accepted_at?: string | null })?.accepted_at ?? null,
+            completed_at: completedAt,
+          };
+          return JSON.stringify(prev) === JSON.stringify(newReq) ? prev : newReq;
         });
-        setWaitingCaseClinicalDetail(detail);
+        
+        setWaitingCaseClinicalDetail((prev) => JSON.stringify(prev) === JSON.stringify(detail) ? prev : detail);
+        
         if (completedAt && view !== "waiting" && completedNoticeRef.current !== waitingCaseId) {
           setStatusMessage("Specialist has completed the case");
           completedNoticeRef.current = waitingCaseId;
@@ -1252,19 +1273,19 @@ export default function RuralDashboardPage() {
   ] as const;
 
   return (
-    <div className="flex min-h-screen will-change-auto bg-gradient-to-br from-blue-50 to-blue-100 text-slate-900">
-      <aside className="hidden w-64 min-h-screen flex-col justify-between rounded-r-3xl bg-gradient-to-b from-blue-600 to-blue-500 p-6 text-white shadow-xl md:fixed md:left-0 md:top-0 md:flex">
+    <div className="flex h-screen overflow-hidden theme-rural page-transition-shell text-slate-900">
+      <aside className="glass-panel hidden w-64 flex-col justify-between p-6 md:fixed md:left-6 md:top-6 md:flex md:h-[calc(100vh-3rem)] z-50">
         <div className="space-y-8">
           <h1 className="text-xl font-semibold tracking-wide">Tele-Pulmonology</h1>
           <nav className="space-y-3">
-            <p className="px-2 text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">Dashboard</p>
+            <p className="px-2 text-xs font-semibold uppercase tracking-[0.2em] text-blue-300">Dashboard</p>
             <button
               type="button"
               onClick={handleOpenNewCase}
-              className={`flex w-full items-center gap-3 rounded-xl bg-white/20 px-4 py-3 backdrop-blur-md border border-white/20 hover:bg-white/30 transition ${
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 transition duration-300 ${
                 view === "new_case"
-                  ? "ring-2 ring-white/40"
-                  : ""
+                  ? "bg-blue-600/80 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] border border-blue-400/50"
+                  : "bg-white/5 text-slate-300 hover:bg-white/10 border border-transparent hover:border-white/10"
               }`}
             >
               <PlusCircle className="h-4 w-4" />
@@ -1273,10 +1294,10 @@ export default function RuralDashboardPage() {
             <button
               type="button"
               onClick={handleOpenInProgressCases}
-              className={`flex w-full items-center gap-3 rounded-xl bg-white/20 px-4 py-3 backdrop-blur-md border border-white/20 hover:bg-white/30 transition ${
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 transition duration-300 ${
                 view === "in_progress" || view === "waiting"
-                  ? "ring-2 ring-white/40"
-                  : ""
+                  ? "bg-blue-600/80 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] border border-blue-400/50"
+                  : "bg-white/5 text-slate-300 hover:bg-white/10 border border-transparent hover:border-white/10"
               }`}
             >
               <Activity className="h-4 w-4" />
@@ -1285,10 +1306,10 @@ export default function RuralDashboardPage() {
             <button
               type="button"
               onClick={handleOpenPastCases}
-              className={`flex w-full items-center gap-3 rounded-xl bg-white/20 px-4 py-3 backdrop-blur-md border border-white/20 hover:bg-white/30 transition ${
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 transition duration-300 ${
                 view === "past_cases" || view === "case_detail"
-                  ? "ring-2 ring-white/40"
-                  : ""
+                  ? "bg-blue-600/80 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] border border-blue-400/50"
+                  : "bg-white/5 text-slate-300 hover:bg-white/10 border border-transparent hover:border-white/10"
               }`}
             >
               <History className="h-4 w-4" />
@@ -1298,21 +1319,21 @@ export default function RuralDashboardPage() {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-white/20 bg-white/20 p-4 text-white backdrop-blur-md">
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white backdrop-blur-md">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/30 text-sm font-semibold text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/50 border border-blue-400/30 text-sm font-semibold text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]">
                 {doctorName.slice(0, 1).toUpperCase()}
               </div>
               <div>
                 <p className="text-sm font-medium">Dr. {doctorName}</p>
-                <button type="button" onClick={() => setView("main")} className="text-xs text-blue-100 hover:text-white">
+                <button type="button" onClick={() => setView("main")} className="text-xs text-blue-300 hover:text-white transition">
                   View Profile
                 </button>
               </div>
             </div>
           </div>
           <div className="mt-4 flex justify-center">
-            <button type="button" onClick={handleLogout} className="logout-btn flex items-center gap-2">
+            <button type="button" onClick={handleLogout} className="glass-btn-danger w-full justify-center">
               <LogOut className="h-4 w-4" />
               <span>Logout</span>
             </button>
@@ -1320,7 +1341,7 @@ export default function RuralDashboardPage() {
         </div>
       </aside>
 
-      <main className="flex-1 p-6 md:ml-64 md:p-10">
+      <main className="flex-1 p-6 md:ml-[300px] md:p-8 xl:p-12 relative z-10 page-transition-content h-screen overflow-y-auto scroll-smooth">
         <div className="mb-6 space-y-3 md:hidden">
           <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 backdrop-blur dark:border-white/10 dark:bg-white/5">
             <div className="mb-3 flex items-center justify-between">
@@ -1372,25 +1393,26 @@ export default function RuralDashboardPage() {
         </div>
 
         {view === "main" && (
-          <div className="relative flex h-full min-h-[70vh] items-center justify-center overflow-hidden rounded-2xl border border-white/40 bg-white/70 text-center shadow-lg backdrop-blur-lg">
+          <div className="glass-panel relative flex h-full min-h-[75vh] items-center justify-center overflow-hidden text-center rounded-3xl group">
+            <div className="absolute inset-0 bg-gradient-to-tr from-blue-600/10 to-purple-600/10 opacity-50 group-hover:opacity-100 transition duration-700 pointer-events-none"></div>
             {floatingIcons.map(({ Icon, className, delay }, index) => (
               <Icon
                 key={index}
-                className={`pointer-events-none absolute h-16 w-16 opacity-10 ${className}`}
-                style={{ animation: `float 6s ease-in-out ${delay} infinite` }}
+                className={`pointer-events-none absolute h-16 w-16 opacity-[0.03] text-white ${className}`}
+                style={{ animation: `float 8s ease-in-out ${delay} infinite` }}
               />
             ))}
-            <div className="relative z-10 max-w-xl space-y-3 px-6 text-center">
-              <div className="text-3xl">👋</div>
-              <h2 className="text-3xl font-semibold">Welcome back, Dr. {doctorName}</h2>
-              <p className="mx-auto mt-3 max-w-md text-slate-500">
-                Select an option from the dashboard to begin registering a patient case and connect with a specialist.
+            <div className="relative z-10 max-w-xl space-y-4 px-6 text-center animate-in zoom-in-95 fade-in duration-700">
+              <div className="text-4xl animate-bounce">👋</div>
+              <h2 className="medical-h1">Welcome back, Dr. {doctorName}</h2>
+              <p className="medical-body mx-auto max-w-md">
+                Select an option from the dashboard to begin registering a patient case and connect with a specialist quickly and efficiently.
               </p>
               {waitingCaseId && (
                 <button
                   type="button"
                   onClick={() => setView("waiting")}
-                  className="mt-6 rounded-xl bg-blue-500/20 px-4 py-2 text-sm text-blue-600 transition hover:bg-blue-500/30 dark:text-blue-400"
+                  className="mt-8 glass-btn-primary mx-auto"
                 >
                   Resume Pending Case Review
                 </button>
@@ -1400,11 +1422,11 @@ export default function RuralDashboardPage() {
         )}
 
       {view === "in_progress" && (
-        <div className="max-w-6xl mx-auto p-8">
-          <h1 className="mb-6 text-2xl font-semibold">In Progress Cases</h1>
-          <div className="space-y-4">
+        <div className="max-w-6xl mx-auto p-4 md:p-8 animate-in slide-in-from-bottom-4 duration-700">
+          <h1 className="medical-h1 mb-8">In Progress Cases</h1>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {inProgressCases.length === 0 ? (
-              <div className="py-20 text-center text-gray-500">No in-progress cases available.</div>
+              <div className="col-span-full py-20 text-center text-slate-400 glass-panel">No in-progress cases available.</div>
             ) : (
               inProgressCases.map((caseItem, index) => {
                 const patientName = Array.isArray(caseItem.patient)
@@ -1413,26 +1435,27 @@ export default function RuralDashboardPage() {
                 const status = caseItem.status;
                 const statusBadgeClass =
                   status === "pending"
-                    ? "bg-amber-100 text-amber-700"
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
                     : status === "accepted"
-                    ? "bg-blue-100 text-blue-700"
-                    : "bg-green-100 text-green-700";
+                    ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                    : "bg-green-500/20 text-green-300 border-green-500/30";
                 return (
                   <div
                     key={caseItem.id}
-                    className="flex items-center justify-between rounded-xl border border-white/30 bg-white/40 p-6 shadow-md backdrop-blur-lg"
+                    className="glass-panel flex flex-col justify-between p-6 gap-6 relative overflow-hidden group"
                   >
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none transition group-hover:bg-blue-500/10"></div>
                     <div>
-                      <p className="text-sm text-gray-500">Case #{index + 1}</p>
-                      <h2 className="text-lg font-semibold">{patientName}</h2>
-                      <p className="text-sm text-gray-600">
-                        Created {caseItem.created_at ? new Date(caseItem.created_at).toLocaleDateString() : "-"}
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="medical-caption text-blue-400">Case #{index + 1}</p>
+                        <span className={`rounded-full px-3 py-1 text-[11px] font-semibold border uppercase tracking-wider ${statusBadgeClass}`}>
+                          {status}
+                        </span>
+                      </div>
+                      <h2 className="text-xl font-semibold text-white mb-1">{patientName}</h2>
+                      <p className="text-sm text-slate-400">
+                        Requested {caseItem.created_at ? new Date(caseItem.created_at).toLocaleDateString() : "-"}
                       </p>
-                    </div>
-                    <div>
-                      <span className={`rounded-full px-3 py-1 text-sm font-medium capitalize ${statusBadgeClass}`}>
-                        {status}
-                      </span>
                     </div>
                     <button
                       type="button"
@@ -1440,7 +1463,7 @@ export default function RuralDashboardPage() {
                         setWaitingCaseId(caseItem.id);
                         setView("waiting");
                       }}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                      className="glass-btn-primary w-full mt-auto"
                     >
                       Continue
                     </button>
@@ -1453,100 +1476,95 @@ export default function RuralDashboardPage() {
       )}
 
       {view === "waiting" && (
-        <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-200 via-blue-300 to-blue-400 opacity-60"></div>
-          <div className="relative z-10">
-            <div className="w-[650px] rounded-2xl border border-white/30 bg-white/40 p-10 text-center shadow-2xl backdrop-blur-xl">
+        <div className="relative min-h-[85vh] flex items-center justify-center animate-in zoom-in-95 duration-700">
+          <div className="relative z-10 w-full max-w-2xl">
+            <div className="glass-panel p-10 text-center overflow-hidden">
             {waitingStatus === null && (
               <>
-                <h2 className="text-xl font-semibold">Loading case status...</h2>
-                <div className="mt-6 flex justify-center">
-                  <div className="h-10 w-10 animate-spin rounded-full border-b-4 border-blue-600"></div>
+                <h2 className="medical-h2">Loading case status...</h2>
+                <div className="mt-8 flex justify-center">
+                  <div className="h-12 w-12 animate-spin rounded-full border-t-4 border-b-4 border-blue-500 opacity-70"></div>
                 </div>
               </>
             )}
             {waitingStatus === "pending" ? (
               <>
-                <p className="text-sm font-medium text-gray-600">Waiting for the specialist</p>
-                  <h2 className="mt-3 text-2xl font-semibold">Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"}</h2>
-                  <p className="mt-1 text-gray-700">to accept your request doctor</p>
-                  <div className="mt-6 flex justify-center">
-                    <div className="h-10 w-10 animate-spin rounded-full border-b-4 border-blue-600"></div>
+                <p className="medical-caption text-blue-400 mb-2">Waiting for the specialist</p>
+                  <h2 className="medical-h1">Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"}</h2>
+                  <p className="medical-body mt-2">to accept your request</p>
+                  <div className="mt-8 flex justify-center">
+                    <div className="h-12 w-12 animate-spin rounded-full border-t-4 border-b-4 border-blue-500 opacity-70"></div>
                   </div>
                 </>
               ) : null}
 
               {waitingStatus === "accepted" ? (
                 <>
-                  <h2 className="text-2xl font-semibold">Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"} accepted your request</h2>
-                  <p className="mt-4 text-gray-700">{waitingRequest?.specialist_message ?? "Specialist is reviewing the case."}</p>
-                  <div className="mt-6 flex justify-center gap-3">
-                    <div className="animate-bounce text-xl">🔍</div>
-                    <div className="text-xl">🧠</div>
-                    <div className="animate-bounce text-xl">✍️</div>
+                  <h2 className="medical-h1">Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"} accepted</h2>
+                  <p className="medical-body mt-4 px-4 py-3 bg-white/5 rounded-xl border border-white/10 italic">{waitingRequest?.specialist_message ?? "Specialist is reviewing the case."}</p>
+                  <div className="mt-8 flex justify-center gap-4">
+                    <div className="animate-bounce text-2xl drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">🔍</div>
+                    <div className="text-2xl drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">🧠</div>
+                    <div className="animate-bounce text-2xl drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]" style={{animationDelay: '100ms'}}>✍️</div>
                   </div>
-                  <p className="mt-5 text-sm text-gray-600">
-                    The specialist is reviewing the requested case and preparing the medical report.
-                    You will receive the detailed report shortly.
+                  <p className="medical-body mt-6 text-sm">
+                    The specialist is reviewing the case and generating the medical report.
                   </p>
                 </>
               ) : null}
 
             {waitingStatus === "completed" ? (
               <>
-                <h2 className="text-2xl font-semibold">Specialist Report from Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"}</h2>
-                <div className="mt-5 space-y-4 rounded-xl bg-white/60 p-5 text-left shadow-inner">
-                  <div>
-                    <h3 className="font-semibold text-slate-800">Diagnosis</h3>
-                    <p className="text-sm text-slate-700">Name: {(waitingReport?.diagnosis as { diagnosis_name?: string } | null)?.diagnosis_name ?? "-"}</p>
-                    <p className="text-sm text-slate-700">Severity: {(waitingReport?.diagnosis as { severity?: string } | null)?.severity ?? "-"}</p>
-                    <p className="text-sm text-slate-700">Notes: {(waitingReport?.diagnosis as { specialist_notes?: string } | null)?.specialist_notes ?? "-"}</p>
+                <h2 className="medical-h1 mb-6">Specialist Report from Dr. {waitingRequest?.specialist_name ?? waitingCaseClinicalDetail?.specialist_name ?? "Specialist"}</h2>
+                <div className="space-y-4 text-left">
+                  <div className="glass-panel p-5 hover:bg-white/5 shadow-none hover:shadow-none hover:-translate-y-0 text-sm border-white/5">
+                    <h3 className="medical-caption mb-3 tracking-widest text-blue-400">Diagnosis</h3>
+                    <p className="text-slate-200"><span className="text-slate-400">Name:</span> {(waitingReport?.diagnosis as { diagnosis_name?: string } | null)?.diagnosis_name ?? "-"}</p>
+                    <p className="text-slate-200"><span className="text-slate-400">Severity:</span> {(waitingReport?.diagnosis as { severity?: string } | null)?.severity ?? "-"}</p>
+                    <p className="text-slate-200"><span className="text-slate-400">Notes:</span> {(waitingReport?.diagnosis as { specialist_notes?: string } | null)?.specialist_notes ?? "-"}</p>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-slate-800">Treatment Plan</h3>
-                    <p className="text-sm text-slate-700">Title: {(waitingReport?.treatment as { treatment_title?: string } | null)?.treatment_title ?? "-"}</p>
-                    <p className="text-sm text-slate-700">Medications: {(waitingReport?.treatment as { medications?: string } | null)?.medications ?? "-"}</p>
-                    <p className="text-sm text-slate-700">Inhaler: {(waitingReport?.treatment as { inhaler_therapy?: string } | null)?.inhaler_therapy ?? "-"}</p>
-                    <p className="text-sm text-slate-700">Oxygen: {(waitingReport?.treatment as { oxygen_therapy?: string | boolean } | null)?.oxygen_therapy ? "Yes" : "No"}</p>
-                    <p className="text-sm text-slate-700">Rehab: {(waitingReport?.treatment as { pulmonary_rehabilitation?: string } | null)?.pulmonary_rehabilitation ?? "-"}</p>
+                  <div className="glass-panel p-5 hover:bg-white/5 shadow-none hover:shadow-none hover:-translate-y-0 text-sm border-white/5">
+                    <h3 className="medical-caption mb-3 tracking-widest text-purple-400">Treatment Plan</h3>
+                    <p className="text-slate-200"><span className="text-slate-400">Title:</span> {(waitingReport?.treatment as { treatment_title?: string } | null)?.treatment_title ?? "-"}</p>
+                    <p className="text-slate-200"><span className="text-slate-400">Medications:</span> {(waitingReport?.treatment as { medications?: string } | null)?.medications ?? "-"}</p>
+                    <p className="text-slate-200"><span className="text-slate-400">Inhaler:</span> {(waitingReport?.treatment as { inhaler_therapy?: string } | null)?.inhaler_therapy ?? "-"}</p>
+                    <p className="text-slate-200"><span className="text-slate-400">Oxygen:</span> {(waitingReport?.treatment as { oxygen_therapy?: string | boolean } | null)?.oxygen_therapy ? "Yes" : "No"}</p>
+                    <p className="text-slate-200"><span className="text-slate-400">Rehab:</span> {(waitingReport?.treatment as { pulmonary_rehabilitation?: string } | null)?.pulmonary_rehabilitation ?? "-"}</p>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-slate-800">Prescriptions</h3>
-                    {(waitingReport?.prescriptions ?? []).length === 0 ? (
-                      <p className="text-sm text-slate-700">-</p>
-                    ) : (
-                      (waitingReport?.prescriptions ?? []).map((rx, idx) => (
-                        <p key={`rx-${idx}`} className="text-sm text-slate-700">
-                          {(rx as { medication_name?: string; dosage?: string; frequency?: string; instructions?: string }).medication_name ?? "-"}{" "}
-                          {(rx as { dosage?: string }).dosage ?? ""} {(rx as { frequency?: string; instructions?: string }).frequency ?? (rx as { instructions?: string }).instructions ?? ""}
-                        </p>
-                      ))
+                  <div className="glass-panel p-5 hover:bg-white/5 shadow-none hover:shadow-none hover:-translate-y-0 text-sm border-white/5">
+                    <h3 className="medical-caption mb-3 tracking-widest text-emerald-400">Prescriptions & Follow-up</h3>
+                    <div className="space-y-2 mb-4">
+                      {(waitingReport?.prescriptions ?? []).length === 0 ? (
+                        <p className="text-slate-500">-</p>
+                      ) : (
+                        (waitingReport?.prescriptions ?? []).map((rx, idx) => (
+                          <div key={`rx-${idx}`} className="flex justify-between items-center py-1 border-b border-white/5 last:border-0">
+                            <span className="text-slate-200">{(rx as { medication_name?: string }).medication_name ?? "-"}</span>
+                            <span className="text-slate-400 text-xs">{(rx as { dosage?: string }).dosage ?? ""} {(rx as { frequency?: string; instructions?: string }).frequency ?? (rx as { instructions?: string }).instructions ?? ""}</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    
+                    {(waitingReport?.furtherDiagnostics?.length ?? 0) > 0 && (
+                      <div className="mb-4">
+                        <span className="text-slate-400">Investigations:</span>
+                        <ul className="list-disc ml-5 text-slate-200 mt-1">
+                          {(waitingReport?.furtherDiagnostics ?? []).map((test, idx) => (
+                            <li key={idx}>{test}</li>
+                          ))}
+                        </ul>
+                      </div>
                     )}
-                  </div>
-                  <div className="mt-3">
-                    <h4 className="text-sm font-semibold text-gray-700">
-                      Recommended Further Investigations
-                    </h4>
-                    {(waitingReport?.furtherDiagnostics?.length ?? 0) === 0 ? (
-                      <p className="text-xs text-gray-500">Not Provided</p>
-                    ) : (
-                      <ol className="list-decimal ml-4 text-xs text-gray-700">
-                        {(waitingReport?.furtherDiagnostics ?? []).map((test, idx) => (
-                          <li key={idx}>{test}</li>
-                        ))}
-                      </ol>
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-slate-800">Follow-up</h3>
-                    <p className="text-sm text-slate-700">Date: {(waitingReport?.followup as { scheduled_date?: string } | null)?.scheduled_date ?? "-"}</p>
-                    <p className="text-sm text-slate-700">Notes: {(waitingReport?.followup as { notes?: string } | null)?.notes ?? "-"}</p>
+
+                    <p className="text-slate-200"><span className="text-slate-400">Follow-up Date:</span> {(waitingReport?.followup as { scheduled_date?: string } | null)?.scheduled_date ?? "-"}</p>
+                    <p className="text-slate-200"><span className="text-slate-400">Follow-up Notes:</span> {(waitingReport?.followup as { notes?: string } | null)?.notes ?? "-"}</p>
                   </div>
                 </div>
                   <button
                     onClick={handleFinalizeCase}
                     disabled={finalizing}
-                    className="mt-6 rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700 disabled:opacity-50"
+                    className="glass-btn-primary w-full mt-8"
                   >
                     {finalizing ? "Finalizing..." : "Finalize Case"}
                   </button>
@@ -1558,21 +1576,21 @@ export default function RuralDashboardPage() {
       )}
 
             {view === "past_cases" && (
-        <div className="max-w-6xl mx-auto p-8">
-          <h1 className="mb-6 text-2xl font-semibold">Past Cases</h1>
+        <div className="max-w-6xl mx-auto p-4 md:p-8 animate-in slide-in-from-bottom-4 duration-700">
+          <h1 className="medical-h1 mb-6">Past Cases</h1>
 
-          <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 glass-panel p-4">
             <input
               placeholder="Search Patient ID..."
               value={pastCasesSearch}
               onChange={(e) => setPastCasesSearch(e.target.value)}
-              className="w-full max-w-sm rounded-lg border border-gray-200 bg-white/60 px-4 py-2 backdrop-blur"
+              className="glass-input sm:w-80 w-full"
             />
 
             <select
               value={pastCasesFilter}
               onChange={(e) => setPastCasesFilter(e.target.value as "All Cases" | "Emergency" | "Normal" | "Completed")}
-              className="rounded-lg border bg-white/60 px-4 py-2"
+              className="glass-input sm:w-auto w-full [&>option]:bg-slate-900 [&>option]:text-white"
             >
               <option>All Cases</option>
               <option>Emergency</option>
@@ -1593,16 +1611,16 @@ export default function RuralDashboardPage() {
                 return (
                   <div
                     key={caseItem.id}
-                    className={`flex items-center justify-between rounded-xl border bg-white/40 p-6 shadow-md backdrop-blur-lg transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] ${
+                    className={`glass-panel flex flex-col sm:flex-row sm:items-center justify-between p-6 gap-4 ${
                       isEmergency
-                        ? "border-red-300 shadow-[0_0_24px_rgba(220,38,38,0.3)]"
-                        : "border-white/30"
+                        ? "border-red-500/50 shadow-[0_0_24px_rgba(220,38,38,0.15)] bg-red-500/5 hover:-translate-y-1"
+                        : "hover:-translate-y-1"
                     }`}
                   >
                     <div>
-                      <p className="text-sm text-gray-500">Case #{index + 1}</p>
-                      <h2 className="text-lg font-semibold">{patientCode}</h2>
-                      <p className="text-sm text-gray-600">
+                      <p className="medical-caption text-blue-400">Case #{index + 1}</p>
+                      <h2 className="text-xl font-semibold text-white mb-1">{patientCode}</h2>
+                      <p className="text-sm text-slate-400">
                         Created{" "}
                         {(caseItem as { created_at?: string }).created_at
                           ? new Date((caseItem as { created_at?: string }).created_at as string).toLocaleDateString()
@@ -1610,31 +1628,27 @@ export default function RuralDashboardPage() {
                       </p>
                     </div>
 
-                    <div>
-                      <span
-                        className={`rounded-full px-3 py-1 text-sm font-medium ${
-                          isEmergency
-                            ? "bg-red-100 text-red-600"
-                            : "bg-green-100 text-green-600"
-                        }`}
-                      >
-                        {isEmergency ? "Emergency" : "Normal"}
-                      </span>
-                      {isEmergency ? (
-                        <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-500 px-2 py-1 text-xs font-semibold text-white">
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          Critical
+                    <div className="flex flex-col items-start sm:items-center">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-[11px] font-semibold border uppercase tracking-wider ${
+                            isEmergency
+                              ? "bg-red-500/20 text-red-300 border-red-500/30"
+                              : "bg-green-500/20 text-green-300 border-green-500/30"
+                          }`}
+                        >
+                          {isEmergency ? "Emergency" : "Normal"}
                         </span>
-                      ) : null}
+                      </div>
                     </div>
 
-                    <div className="flex gap-4">
+                    <div className="flex">
                       <button
                         onClick={() => {
                           setViewingCaseId(caseItem.id);
                           setView("case_detail");
                         }}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                        className="glass-btn-secondary"
                       >
                         View Details
                       </button>
@@ -1647,106 +1661,111 @@ export default function RuralDashboardPage() {
         </div>
       )}{view === "case_detail" ? (
         caseDetail ? (
-          <div className="space-y-6">
+          <div className="max-w-6xl mx-auto p-4 md:p-8 animate-in slide-in-from-bottom-4 duration-700 space-y-6">
           <button
             type="button"
             onClick={() => {
               setViewingCaseId(null);
               setView("past_cases");
             }}
-            className="text-sm text-slate-600 hover:text-slate-800"
+            className="text-sm text-slate-400 hover:text-white flex items-center gap-2 transition"
           >
-            Back to Past Cases
+            ← Back to Past Cases
           </button>
-          <div className={`mb-6 rounded-xl border bg-white/40 p-6 shadow-md backdrop-blur-xl ${
-            isEmergencyViewingCase ? "border-red-300 shadow-[0_0_24px_rgba(220,38,38,0.3)]" : "border-white/30"
+          
+          <div className={`mb-6 glass-panel p-6 flex flex-col md:flex-row justify-between items-start md:items-center ${
+            isEmergencyViewingCase ? "border-red-500/50 shadow-[0_0_24px_rgba(220,38,38,0.2)] bg-red-500/10" : ""
           }`}>
-            <h1 className="text-2xl font-semibold">{caseDetail.patient?.name ?? "Patient"}</h1>
-            <p className="mt-1 text-gray-600">Patient ID: {caseDetail.patient?.generated_patient_id ?? "Not Provided"}</p>
-            <div className="mt-3">
+            <div>
+              <h1 className="medical-h1">{caseDetail.patient?.name ?? "Patient"}</h1>
+              <p className="text-slate-400">Patient ID: {caseDetail.patient?.generated_patient_id ?? "Not Provided"}</p>
+            </div>
+            <div className="mt-4 md:mt-0 flex gap-2">
               <span
-                className={`rounded-full px-3 py-1 text-sm font-medium ${
-                  caseDetail.case_status === "finalized" ? "bg-green-100 text-green-600" : "bg-blue-100 text-blue-600"
+                className={`rounded-full px-4 py-1.5 text-xs font-semibold border tracking-wide uppercase ${
+                  caseDetail.case_status === "finalized" ? "bg-green-500/20 text-green-300 border-green-500/30" : "bg-blue-500/20 text-blue-300 border-blue-500/30"
                 }`}
               >
                 {caseDetail.case_status === "finalized" ? "Completed Case" : "In Progress Case"}
               </span>
-              {isEmergencyViewingCase ? (
-                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Emergency Case
+              {isEmergencyViewingCase && (
+                <span className="flex items-center gap-1 rounded-full bg-red-500/20 px-4 py-1.5 text-xs font-semibold text-red-300 border border-red-500/30">
+                  <AlertTriangle className="h-4 w-4" />
+                  Emergency
                 </span>
-              ) : null}
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div className="rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl">
-              <h2 className="mb-4 text-lg font-semibold">Patient Information</h2>
-              <p><strong>Name:</strong> {caseDetail.patient?.name ?? "Not Provided"}</p>
-              <p><strong>Patient ID:</strong> {caseDetail.patient?.generated_patient_id ?? "Not Provided"}</p>
-              <p><strong>Age:</strong> {caseDetail.patient?.age ?? "Not Provided"}</p>
-              <p><strong>Gender:</strong> {caseDetail.patient?.gender ?? "Not Provided"}</p>
-              <p><strong>Height:</strong> {caseDetail.patient?.height_cm ?? "Not Provided"} cm</p>
-              <p><strong>Weight:</strong> {caseDetail.patient?.weight_kg ?? "Not Provided"} kg</p>
+            <div className="glass-panel p-6">
+              <h2 className="medical-h2 mb-4 text-blue-400">Patient Information</h2>
+              <div className="space-y-2 text-sm text-slate-200">
+                <p><span className="text-slate-500">Name:</span> {caseDetail.patient?.name ?? "Not Provided"}</p>
+                <p><span className="text-slate-500">Patient ID:</span> {caseDetail.patient?.generated_patient_id ?? "Not Provided"}</p>
+                <p><span className="text-slate-500">Age:</span> {caseDetail.patient?.age ?? "Not Provided"}</p>
+                <p><span className="text-slate-500">Gender:</span> {caseDetail.patient?.gender ?? "Not Provided"}</p>
+                <p><span className="text-slate-500">Height:</span> {caseDetail.patient?.height_cm ?? "Not Provided"} cm</p>
+                <p><span className="text-slate-500">Weight:</span> {caseDetail.patient?.weight_kg ?? "Not Provided"} kg</p>
+              </div>
             </div>
 
-            <div className="rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl">
-              <h2 className="mb-4 text-lg font-semibold">Clinical History</h2>
-              <p className="leading-relaxed text-gray-700">{caseDetail.patient?.smoking_history ?? "Not Provided"}</p>
+            <div className="glass-panel p-6">
+              <h2 className="medical-h2 mb-4 text-blue-400">Clinical History</h2>
+              <p className="leading-relaxed text-sm text-slate-300">{caseDetail.patient?.smoking_history ?? "Not Provided"}</p>
             </div>
 
-            <div className="col-span-1 rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl md:col-span-2">
-              <h2 className="mb-4 text-lg font-semibold">Vitals & Spirometry</h2>
+            <div className="col-span-1 glass-panel p-6 md:col-span-2">
+              <h2 className="medical-h2 mb-4 text-purple-400">Vitals & Spirometry</h2>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">BP</p>
-                  <p className="text-lg font-semibold">
-                    {caseDetail.vitals?.systolic_bp ?? "-"} / {caseDetail.vitals?.diastolic_bp ?? "-"} mmHg
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10">
+                  <p className="text-xs text-slate-400 mb-1">BP</p>
+                  <p className="text-xl font-semibold text-white">
+                    {caseDetail.vitals?.systolic_bp ?? "-"} / {caseDetail.vitals?.diastolic_bp ?? "-"} <span className="text-xs text-slate-500">mmHg</span>
                   </p>
                 </div>
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">Temperature</p>
-                  <p className="text-lg font-semibold">{caseDetail.vitals?.temperature_f ?? "-"} °F</p>
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10">
+                  <p className="text-xs text-slate-400 mb-1">Temperature</p>
+                  <p className="text-xl font-semibold text-white">{caseDetail.vitals?.temperature_f ?? "-"} <span className="text-xs text-slate-500">°F</span></p>
                 </div>
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">SpO2</p>
-                  <p className="text-lg font-semibold">{caseDetail.vitals?.spo2 == null ? "—" : `${caseDetail.vitals.spo2}%`}</p>
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10">
+                  <p className="text-xs text-slate-400 mb-1">SpO2</p>
+                  <p className="text-xl font-semibold text-white">{caseDetail.vitals?.spo2 == null ? "—" : `${caseDetail.vitals.spo2}%`}</p>
                 </div>
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">Resp Rate</p>
-                  <p className="text-lg font-semibold">{caseDetail.vitals?.respiratory_rate == null ? "—" : caseDetail.vitals.respiratory_rate}</p>
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10">
+                  <p className="text-xs text-slate-400 mb-1">Resp Rate</p>
+                  <p className="text-xl font-semibold text-white">{caseDetail.vitals?.respiratory_rate == null ? "—" : caseDetail.vitals.respiratory_rate}</p>
                 </div>
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">FVC</p>
-                  <p className="text-lg font-semibold">{caseDetail.spirometry?.fvc == null ? "—" : `${caseDetail.spirometry.fvc} L`}</p>
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10">
+                  <p className="text-xs text-slate-400 mb-1">FVC</p>
+                  <p className="text-xl font-semibold text-white">{caseDetail.spirometry?.fvc == null ? "—" : `${caseDetail.spirometry.fvc} L`}</p>
                 </div>
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">FEV1</p>
-                  <p className="text-lg font-semibold">{caseDetail.spirometry?.fev1 == null ? "—" : `${caseDetail.spirometry.fev1} L`}</p>
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10">
+                  <p className="text-xs text-slate-400 mb-1">FEV1</p>
+                  <p className="text-xl font-semibold text-white">{caseDetail.spirometry?.fev1 == null ? "—" : `${caseDetail.spirometry.fev1} L`}</p>
                 </div>
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">FEV1/FVC</p>
-                  <p className="text-lg font-semibold">{caseDetail.spirometry?.fev1_fvc == null ? "—" : `${caseDetail.spirometry.fev1_fvc}%`}</p>
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10">
+                  <p className="text-xs text-slate-400 mb-1">FEV1/FVC</p>
+                  <p className="text-xl font-semibold text-white">{caseDetail.spirometry?.fev1_fvc == null ? "—" : `${caseDetail.spirometry.fev1_fvc}%`}</p>
                 </div>
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">FEV1/FEV6</p>
-                  <p className="text-lg font-semibold">{caseDetail.spirometry?.fev1_fev6 == null ? "—" : `${caseDetail.spirometry.fev1_fev6}%`}</p>
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10">
+                  <p className="text-xs text-slate-400 mb-1">FEV1/FEV6</p>
+                  <p className="text-xl font-semibold text-white">{caseDetail.spirometry?.fev1_fev6 == null ? "—" : `${caseDetail.spirometry.fev1_fev6}%`}</p>
                 </div>
-                <div className="rounded-lg bg-white/60 p-3 text-center">
-                  <p className="text-xs text-gray-500">PEF</p>
-                  <p className="text-lg font-semibold">{caseDetail.spirometry?.pef == null ? "—" : `${caseDetail.spirometry.pef} L/min`}</p>
+                <div className="rounded-xl border border-white/5 bg-white/5 p-4 text-center transition hover:bg-white/10 col-span-2 md:col-span-4 max-w-sm mx-auto w-full">
+                  <p className="text-xs text-slate-400 mb-1">PEF</p>
+                  <p className="text-xl font-semibold text-white">{caseDetail.spirometry?.pef == null ? "—" : `${caseDetail.spirometry.pef} L/min`}</p>
                 </div>
               </div>
             </div>
 
-            <div className="col-span-1 rounded-xl border border-blue-200 bg-blue-50 p-6 md:col-span-2">
-              <h2 className="mb-3 text-lg font-semibold">Rural Doctor Diagnosis</h2>
-              <p className="leading-relaxed text-gray-700">{caseDetail.rural_diagnosis ?? "Not Provided"}</p>
+            <div className="col-span-1 border border-blue-500/20 bg-blue-500/5 glass-panel p-6 md:col-span-2">
+              <h2 className="medical-h2 mb-3 text-blue-400">Rural Doctor Diagnosis</h2>
+              <p className="leading-relaxed text-sm text-slate-300">{caseDetail.rural_diagnosis ?? "Not Provided"}</p>
             </div>
 
-            <div className="col-span-1 rounded-xl border bg-white/40 p-6 shadow-sm backdrop-blur-xl md:col-span-2">
-              <h3 className="text-lg font-semibold">X-ray Image</h3>
+            <div className="col-span-1 glass-panel p-6 md:col-span-2 flex flex-col sm:flex-row items-center justify-between">
+              <h3 className="medical-h2 text-blue-400">X-ray Image</h3>
               {caseDetail.xrays && caseDetail.xrays.length > 0 ? (
                 <button
                   type="button"
@@ -1755,23 +1774,23 @@ export default function RuralDashboardPage() {
                     setXrayPath(caseDetail.xrays?.[0]?.path ?? null);
                     setShowXrayModal(true);
                   }}
-                  className="mt-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+                  className="glass-btn-secondary"
                 >
-                  View X-ray
+                  <Activity className="h-4 w-4" /> View X-ray
                 </button>
               ) : (
-                <p className="mt-2 text-gray-500">Not Provided</p>
+                <p className="mt-2 text-slate-500 italic">Not Provided</p>
               )}
             </div>
 
-            <div className="col-span-1 rounded-xl border border-green-200 bg-green-50 p-6 md:col-span-2">
-              <h2 className="mb-3 text-lg font-semibold">Specialist Diagnosis</h2>
-              <div className="space-y-2 text-gray-700">
-                <p><strong>Primary Diagnosis:</strong> {caseDetail.diagnosis?.diagnosis_name ?? "Not Provided"}</p>
-                <p><strong>Severity:</strong> {caseDetail.diagnosis?.severity ?? "Not Provided"}</p>
-                <p><strong>Specialist:</strong> {caseDetail.specialist_name ?? "Not Provided"}</p>
-                <p><strong>Diagnosis Timestamp:</strong> {caseDetail.diagnosis?.created_at ?? "Not Provided"}</p>
-                <p><strong>Clinical Notes:</strong> {caseDetail.diagnosis?.specialist_notes ?? "Not Provided"}</p>
+            <div className="col-span-1 border border-emerald-500/20 bg-emerald-500/5 glass-panel p-6 md:col-span-2">
+              <h2 className="medical-h2 mb-3 text-emerald-400">Specialist Diagnosis</h2>
+              <div className="space-y-2 text-sm text-slate-300">
+                <p><strong className="text-slate-400">Primary Diagnosis:</strong> {caseDetail.diagnosis?.diagnosis_name ?? "Not Provided"}</p>
+                <p><strong className="text-slate-400">Severity:</strong> {caseDetail.diagnosis?.severity ?? "Not Provided"}</p>
+                <p><strong className="text-slate-400">Specialist:</strong> {caseDetail.specialist_name ?? "Not Provided"}</p>
+                <p><strong className="text-slate-400">Diagnosis Timestamp:</strong> {caseDetail.diagnosis?.created_at ?? "Not Provided"}</p>
+                <p><strong className="text-slate-400">Clinical Notes:</strong> {caseDetail.diagnosis?.specialist_notes ?? "Not Provided"}</p>
               </div>
             </div>
 
@@ -1833,20 +1852,25 @@ export default function RuralDashboardPage() {
         ) : null
       ) : null}
 
+      {/* Global success popup toast */}
       {statusMessage && (
-        <div className="rounded-lg border border-emerald-800 bg-emerald-950/50 px-4 py-2 text-sm text-emerald-400">
-          {statusMessage}
+        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-green-600 shadow-2xl text-white text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          <span>✅</span>
+          <span>{statusMessage}</span>
         </div>
       )}
+
+      {/* Global error popup toast */}
       {errorMessage && (
-        <div className="rounded-lg border border-red-900 bg-red-950/50 px-4 py-2 text-sm text-red-400">
-          {errorMessage}
+        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          <span>❌</span>
+          <span>{errorMessage}</span>
         </div>
       )}
 
       {view === "new_case" && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-[220px_1fr]">
-      <div className="new-case-glass bg-white/60 backdrop-blur-lg rounded-2xl p-8 shadow-xl border border-white/40 md:col-span-2">
+        <div className="grid grid-cols-1 gap-6 max-w-6xl mx-auto p-4 md:p-8 animate-in slide-in-from-bottom-4 duration-700">
+      <div className="glass-panel p-8">
       <div className="mb-8 flex items-center justify-between">
         {steps.map((step, index) => {
           const stepNumber = index + 1;
@@ -1882,47 +1906,49 @@ export default function RuralDashboardPage() {
         {currentStep === 1 && (
         <form
           onSubmit={handleCreatePatient}
-          className="space-y-4 rounded-2xl border border-white/40 bg-white/30 p-4"
+          className="space-y-6 animate-in fade-in zoom-in-95 duration-500"
         >
-          <h2 className="text-sm font-semibold text-slate-100">Step 1: Patient intake</h2>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="col-span-2 space-y-1">
-              <label className="text-slate-200">Name</label>
+          <div className="border-b border-white/10 pb-4 mb-4">
+            <h2 className="medical-h2 text-blue-400">Step 1: Patient Intake</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="col-span-1 sm:col-span-2 space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Name</label>
               <input
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={patientForm.name}
                 onChange={(e) => setPatientForm((p) => ({ ...p, name: e.target.value }))}
                 required
                 readOnly={patientSaved}
               />
             </div>
-            <div className="col-span-2 space-y-1">
-              <label className="text-slate-200">Phone number</label>
+            <div className="col-span-1 sm:col-span-2 space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Phone number</label>
               <input
                 type="tel"
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={patientForm.phone_number}
                 onChange={(e) => setPatientForm((p) => ({ ...p, phone_number: e.target.value }))}
                 required
                 readOnly={patientSaved}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">Age</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Age</label>
               <input
                 type="number"
                 min={0}
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={patientForm.age}
                 onChange={(e) => setPatientForm((p) => ({ ...p, age: e.target.value }))}
                 required
                 readOnly={patientSaved}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">Gender</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Gender</label>
               <select
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={patientForm.gender}
                 onChange={(e) => setPatientForm((p) => ({ ...p, gender: e.target.value as Gender }))}
                 disabled={patientSaved}
@@ -1932,43 +1958,43 @@ export default function RuralDashboardPage() {
                 <option value="other">Other</option>
               </select>
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">Height (cm)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Height (cm)</label>
               <input
                 type="number"
                 min={0}
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={patientForm.height_cm}
                 onChange={(e) => setPatientForm((p) => ({ ...p, height_cm: e.target.value }))}
                 readOnly={patientSaved}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">Weight (kg)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Weight (kg)</label>
               <input
                 type="number"
                 min={0}
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={patientForm.weight_kg}
                 onChange={(e) => setPatientForm((p) => ({ ...p, weight_kg: e.target.value }))}
                 readOnly={patientSaved}
               />
             </div>
-            <div className="col-span-2 space-y-1">
-              <label className="text-slate-200">Patient History</label>
+            <div className="col-span-1 sm:col-span-2 space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Patient History</label>
               <textarea
                 rows={2}
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={patientForm.smoking_history}
                 onChange={(e) => setPatientForm((p) => ({ ...p, smoking_history: e.target.value }))}
                 readOnly={patientSaved}
               />
             </div>
-            <div className="col-span-2 space-y-1">
-              <label className="text-slate-200">Diagnosis date</label>
+            <div className="col-span-1 sm:col-span-2 space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Diagnosis date</label>
               <input
                 type="date"
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={patientForm.diagnosis_date}
                 onChange={(e) => setPatientForm((p) => ({ ...p, diagnosis_date: e.target.value }))}
                 required
@@ -1992,9 +2018,9 @@ export default function RuralDashboardPage() {
           <button
             type="submit"
             disabled={!patientForm.consent_given || patientSaved || savingPatient}
-            className="mt-4 px-6 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition disabled:cursor-not-allowed disabled:opacity-50"
+            className="glass-btn-primary mt-8 max-w-sm"
           >
-            {savingPatient ? "Saving..." : patientSaved ? "Saved" : "Save patient"}
+            {savingPatient ? "Saving..." : patientSaved ? "Saved Successfully" : "Save Patient Configuration"}
           </button>
         </form>
         )}
@@ -2002,18 +2028,20 @@ export default function RuralDashboardPage() {
         {currentStep === 2 && (
         <form
           onSubmit={handleSaveVitalsAndSpirometry}
-          className={`space-y-4 rounded-2xl border border-white/40 p-4 ${step2Enabled ? "bg-white/30" : "bg-white/20 opacity-60"}`}
+          className={`space-y-6 animate-in fade-in zoom-in-95 duration-500 ${!step2Enabled && "opacity-50 pointer-events-none"}`}
         >
-          <h2 className="text-sm font-semibold text-slate-100">Step 2: Vitals & spirometry</h2>
-          <p className="text-xs text-slate-400">Save patient first to enable this section.</p>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="col-span-2 space-y-1">
-              <label className="text-slate-200">Blood Pressure (mmHg)</label>
+          <div className="border-b border-white/10 pb-4 mb-4">
+            <h2 className="medical-h2 text-blue-400">Step 2: Vitals & Spirometry</h2>
+            <p className="text-xs text-slate-400 mt-1">Save patient details first to unlock this section.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="col-span-1 sm:col-span-2 space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Blood Pressure (mmHg)</label>
               <div className="grid grid-cols-2 gap-4">
                 <input
                   type="number"
                   placeholder="Systolic BP (mmHg)"
-                  className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="glass-input w-full"
                   value={vitalsForm.systolic_bp}
                   onChange={(e) => setVitalsForm((p) => ({ ...p, systolic_bp: e.target.value }))}
                   disabled={!step2Enabled}
@@ -2021,102 +2049,102 @@ export default function RuralDashboardPage() {
                 <input
                   type="number"
                   placeholder="Diastolic BP (mmHg)"
-                  className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="glass-input w-full"
                   value={vitalsForm.diastolic_bp}
                   onChange={(e) => setVitalsForm((p) => ({ ...p, diastolic_bp: e.target.value }))}
                   disabled={!step2Enabled}
                 />
               </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">Temperature (°F)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Temperature (°F)</label>
               <input
                 type="number"
                 step="0.1"
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 placeholder="Temperature (°F)"
                 value={vitalsForm.temperature}
                 onChange={(e) => setVitalsForm((p) => ({ ...p, temperature: e.target.value }))}
                 disabled={!step2Enabled}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">SpO2 (%)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">SpO2 (%)</label>
               <input
                 type="number"
                 min={0}
                 max={100}
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={vitalsForm.spo2}
                 onChange={(e) => setVitalsForm((p) => ({ ...p, spo2: e.target.value }))}
                 required
                 disabled={!step2Enabled}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">Respiratory Rate (breaths/min)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">Respiratory Rate (breaths/min)</label>
               <input
                 type="number"
                 min={0}
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={vitalsForm.respiratory_rate}
                 onChange={(e) => setVitalsForm((p) => ({ ...p, respiratory_rate: e.target.value }))}
                 required
                 disabled={!step2Enabled}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">FVC (L)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">FVC (L)</label>
               <input
                 type="number"
                 step="0.01"
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={spirometryForm.fvc}
                 onChange={(e) => setSpirometryForm((p) => ({ ...p, fvc: e.target.value }))}
                 required
                 disabled={!step2Enabled}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">FEV1 (L)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">FEV1 (L)</label>
               <input
                 type="number"
                 step="0.01"
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={spirometryForm.fev1}
                 onChange={(e) => setSpirometryForm((p) => ({ ...p, fev1: e.target.value }))}
                 required
                 disabled={!step2Enabled}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">FEV1 / FVC (%)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">FEV1 / FVC (%)</label>
               <input
                 type="number"
                 step="0.01"
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={spirometryForm.fev1_fvc}
                 onChange={(e) => setSpirometryForm((p) => ({ ...p, fev1_fvc: e.target.value }))}
                 disabled={!step2Enabled}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">FEV1 / FEV6 (%)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">FEV1 / FEV6 (%)</label>
               <input
                 type="number"
                 step="0.01"
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={spirometryForm.fev1_fev6}
                 onChange={(e) => setSpirometryForm((p) => ({ ...p, fev1_fev6: e.target.value }))}
                 disabled={!step2Enabled}
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-slate-200">PEF (L/min)</label>
+            <div className="space-y-2">
+              <label className="medical-caption ml-1 text-slate-300">PEF (L/min)</label>
               <input
                 type="number"
                 step="0.01"
-                className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="glass-input w-full"
                 value={spirometryForm.pef}
                 onChange={(e) => setSpirometryForm((p) => ({ ...p, pef: e.target.value }))}
                 required
@@ -2127,9 +2155,9 @@ export default function RuralDashboardPage() {
           <button
             type="submit"
             disabled={!step2Enabled || vitalsSaved || savingVitals}
-            className="mt-4 px-6 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition disabled:cursor-not-allowed disabled:opacity-50"
+            className="glass-btn-primary mt-8 max-w-sm"
           >
-            {savingVitals ? "Saving..." : vitalsSaved ? "Saved" : "Save vitals & spirometry"}
+            {savingVitals ? "Saving..." : vitalsSaved ? "Saved Successfully" : "Save Vitals & Spirometry"}
           </button>
         </form>
         )}
@@ -2137,43 +2165,48 @@ export default function RuralDashboardPage() {
 
       {currentStep === 3 && (
       <section
-        className={`space-y-4 rounded-2xl border border-white/40 p-4 ${step3Enabled ? "bg-white/30" : "bg-white/20 opacity-60"}`}
+        className={`space-y-6 animate-in fade-in zoom-in-95 duration-500 ${!step3Enabled && "opacity-50 pointer-events-none"}`}
       >
-        <h2 className="text-sm font-semibold text-slate-100">Step 3: X-ray upload</h2>
-        <p className="text-xs text-slate-400">
-          Save vitals and spirometry first. Only DICOM (.dcm) files accepted.
-        </p>
+        <div className="border-b border-white/10 pb-4 mb-4">
+          <h2 className="medical-h2 text-blue-400">Step 3: X-ray Upload</h2>
+          <p className="text-xs text-slate-400 mt-1">
+            Ensure physiological markers are registered. Provide high resolution DICOM scans exclusively.
+          </p>
+        </div>
         <form onSubmit={handleUploadXray} className="space-y-4">
-          <div className="space-y-1 text-sm">
-            <label className="text-slate-200">Chest X-ray (DICOM only)</label>
+          <div className="space-y-2">
+            <label className="medical-caption ml-1 text-slate-300">Chest X-ray Data (.dcm)</label>
             <input
               type="file"
               accept={DICOM_ACCEPT}
               onChange={handleXrayFileChange}
               disabled={!step3Enabled || caseSubmitted}
-              className="w-full text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-xs file:font-medium file:text-slate-100 hover:file:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="glass-input w-full file:mr-4 file:rounded-full file:border-0 file:bg-blue-600/30 file:text-blue-300 file:px-4 file:py-2 file:text-xs file:font-semibold hover:file:bg-blue-600/40 file:transition-all cursor-pointer"
             />
           </div>
           {xrayValidationError && (
-            <p className="text-sm text-amber-400">{xrayValidationError}</p>
+            <p className="text-sm text-amber-500 bg-amber-500/10 px-4 py-2 rounded-lg">{xrayValidationError}</p>
           )}
           <button
             type="submit"
             disabled={!step3Enabled || !xrayFile || xrayUploaded || uploadingXray || caseSubmitted}
-            className="mt-4 px-6 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition disabled:cursor-not-allowed disabled:opacity-50"
+            className="glass-btn-primary max-w-sm mt-4"
           >
-            {uploadingXray ? "Uploading..." : xrayUploaded ? "Uploaded" : "Upload X-ray"}
+            {uploadingXray ? "Transmitting..." : xrayUploaded ? "Uploaded Successfully" : "Upload Scan"}
           </button>
         </form>
       </section>
       )}
 
       {currentStep === 4 && (
-      <section className="space-y-4 rounded-2xl border border-white/40 bg-white/30 p-4">
-        <h2 className="text-sm font-semibold text-slate-100">Diagnosis & Request</h2>
+      <section className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+        <div className="border-b border-white/10 pb-4 mb-4">
+          <h2 className="medical-h2 text-purple-400">Step 4: Clinical Diagnosis & Transmission</h2>
+        </div>
+        <label className="medical-caption ml-1 text-slate-300 block mb-2">Preliminary Findings</label>
         <textarea
           rows={4}
-          className="w-full px-4 py-3 rounded-lg bg-white/40 backdrop-blur-md border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
+          className="glass-input w-full"
           value={ruralDiagnosisReport}
           onChange={(e) => setRuralDiagnosisReport(e.target.value)}
           placeholder="Clinical diagnosis, findings, notes..."
@@ -2186,101 +2219,104 @@ export default function RuralDashboardPage() {
             setCurrentStep(5);
           }}
           disabled={!canSubmitCase || submittingCase}
-          className="px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          className="glass-btn-primary mt-6 max-w-sm"
         >
-          Submit Patient Case
+          Assign Specialist & Submit
         </button>
       </section>
       )}
 
       {currentStep === 5 && (
-      <section className="space-y-4 rounded-2xl border border-white/40 bg-white/30 p-4">
-        <h2 className="text-sm font-semibold text-slate-100">Select Specialist</h2>
+      <section className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+        <div className="border-b border-white/10 pb-4 mb-4">
+          <h2 className="medical-h2 text-emerald-400">Select Specialist</h2>
+        </div>
         <select
-          className="w-full rounded-lg border border-white/30 bg-white/40 px-4 py-3 text-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="glass-input w-full [&>option]:bg-slate-900 [&>option]:text-white"
           value={selectedSpecialistId ?? ""}
           onChange={(e) => setSelectedSpecialistId(e.target.value || null)}
         >
-          <option value="">Choose specialist</option>
+          <option value="">System Auto-Match / Select Manually</option>
           {specialists.map((s) => (
             <option key={s.id} value={s.id}>
               Dr. {s.full_name ?? s.id.slice(0, 8)}
             </option>
           ))}
         </select>
-        <div>
-          <label className="mb-2 block text-sm text-slate-500">Priority</label>
-          <div className="flex items-center gap-2">
+        <div className="mt-6">
+          <label className="medical-caption ml-1 text-slate-300 block mb-2">Priority Selection</label>
+          <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={() => setPendingPriority("emergency")}
-              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex-1 rounded-xl border px-4 py-3 text-sm font-bold tracking-wider transition duration-300 ${
                 pendingPriority === "emergency"
-                  ? "border-red-600 bg-red-600 text-white"
-                  : "border-slate-300 text-slate-700 hover:bg-white/50"
+                  ? "border-red-500 bg-red-600/80 text-white shadow-[0_0_20px_rgba(220,38,38,0.5)]"
+                  : "border-red-500/20 text-red-400 hover:bg-red-500/10 hover:border-red-500/40 bg-white/5"
               }`}
             >
-              Emergency
+              EMERGENCY
             </button>
-            <span className="text-xs text-slate-500">OR</span>
             <button
               type="button"
               onClick={() => {
                 setPendingPriority("normal");
                 setRuralMessage("");
               }}
-              className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+              className={`flex-1 rounded-xl border px-4 py-3 text-sm font-bold tracking-wider transition duration-300 ${
                 pendingPriority === "normal"
-                  ? "border-blue-600 bg-blue-600 text-white"
-                  : "border-slate-300 text-slate-700 hover:bg-white/50"
+                  ? "border-blue-500 bg-blue-600/80 text-white shadow-[0_0_20px_rgba(37,99,235,0.5)]"
+                  : "border-blue-500/20 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/40 bg-white/5"
               }`}
             >
-              Normal
+              NORMAL
             </button>
           </div>
         </div>
-        <label className="block text-sm text-slate-500">Notify message (optional)</label>
-        <textarea
-          rows={2}
-          className="w-full rounded-lg border border-white/30 bg-white/40 px-4 py-3 text-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-400"
-          value={ruralMessage}
-          onChange={(e) => setRuralMessage(e.target.value)}
-          placeholder="Add a note for the specialist"
-        />
+        <div className="mt-6">
+          <label className="medical-caption ml-1 text-slate-300 block mb-2">Optional Dispatch Directive</label>
+          <textarea
+            rows={2}
+            className="glass-input w-full"
+            value={ruralMessage}
+            onChange={(e) => setRuralMessage(e.target.value)}
+            placeholder="Additional context directly for the specialist..."
+          />
+        </div>
         <button
           type="button"
           onClick={handleConfirmSubmitWithSpecialist}
           disabled={!selectedSpecialistId || !pendingPriority || submittingCase}
-          className="mt-4 px-6 py-3 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition disabled:opacity-50"
+          className="glass-btn-primary mt-8 max-w-sm"
         >
-          {submittingCase ? "Submitting..." : "Confirm"}
+          {submittingCase ? "Transmitting Package..." : "Finalize & Transmit Case"}
         </button>
       </section>
       )}
 
-      <div className="mt-8 flex justify-between">
+      <div className="mt-12 flex justify-between pt-6 border-t border-white/5">
         {currentStep > 1 ? (
           <button
-            className="px-5 py-2 rounded-lg bg-gray-200"
+            className="glass-btn-secondary"
             onClick={() => setCurrentStep(currentStep - 1)}
           >
-            Back
+            ← Previous Element
           </button>
         ) : (
           <div />
         )}
 
         {currentStep < 4 && (
-          <button
+            <button
             disabled={
               (currentStep === 1 && !patientSaved) ||
               (currentStep === 2 && !vitalsSaved) ||
               (currentStep === 3 && !xrayUploaded)
             }
             onClick={() => setCurrentStep(currentStep + 1)}
-            className="px-6 py-2 rounded-lg bg-blue-600 text-white disabled:bg-gray-300"
+            className="glass-btn-primary"
           >
-            Next
+            Advance to Step {currentStep + 1} →
           </button>
         )}
       </div>
@@ -2291,62 +2327,60 @@ export default function RuralDashboardPage() {
       </main>
 
       {showSpecialistModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl border-2 border-slate-700 bg-slate-900 p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-100 mb-4">Select Available Specialist</h3>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-300">
+          <div className="w-full max-w-lg glass-panel p-8 shadow-2xl">
+            <h3 className="medical-h2 text-white mb-6">Select Available Specialist</h3>
             <select
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 mb-4"
+              className="glass-input w-full [&>option]:bg-slate-900 [&>option]:text-white mb-6"
               value={selectedSpecialistId ?? ""}
               onChange={(e) => setSelectedSpecialistId(e.target.value || null)}
             >
-              <option value="">Choose specialist</option>
+              <option value="">System Match Default</option>
               {specialists.map((s) => (
                 <option key={s.id} value={s.id}>
                   Dr. {s.full_name ?? s.id.slice(0, 8)}
                 </option>
               ))}
             </select>
-            <div className="mb-4">
-              <label className="block text-sm text-slate-400 mb-2">Priority</label>
-              <div className="flex items-center gap-2">
+            <div className="mb-6">
+              <label className="medical-caption text-slate-300 mb-2 block ml-1">Priority Override</label>
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setPendingPriority("emergency")}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`flex-1 rounded-xl border px-4 py-3 text-sm font-bold tracking-wider transition ${
                     pendingPriority === "emergency"
-                      ? "border-red-600 bg-red-600 text-white"
-                      : "border-slate-600 text-slate-300 hover:bg-slate-800"
+                      ? "border-red-500 bg-red-600/80 text-white shadow-[0_0_20px_rgba(220,38,38,0.5)]"
+                      : "border-red-500/20 text-red-400 hover:bg-red-500/10 hover:border-red-500/40 bg-white/5"
                   }`}
                 >
-                  Emergency
+                  EMERGENCY
                 </button>
-                <span className="text-xs text-slate-500">OR</span>
                 <button
                   type="button"
                   onClick={() => {
                     setPendingPriority("normal");
                     setRuralMessage("");
                   }}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`flex-1 rounded-xl border px-4 py-3 text-sm font-bold tracking-wider transition ${
                     pendingPriority === "normal"
-                      ? "border-blue-600 bg-blue-600 text-white"
-                      : "border-slate-600 text-slate-300 hover:bg-slate-800"
+                      ? "border-blue-500 bg-blue-600/80 text-white shadow-[0_0_20px_rgba(37,99,235,0.5)]"
+                      : "border-blue-500/20 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/40 bg-white/5"
                   }`}
                 >
-                  Normal
+                  NORMAL
                 </button>
               </div>
             </div>
-            <label className="block text-sm text-slate-400 mb-1">Notify message (optional)</label>
+            <label className="medical-caption text-slate-300 mb-2 block ml-1">Directive Details</label>
             <textarea
-              rows={2}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 mb-4"
+              rows={3}
+              className="glass-input w-full mb-8"
               value={ruralMessage}
               onChange={(e) => setRuralMessage(e.target.value)}
-              placeholder="Add a note for the specialist"
+              placeholder="Private routing instructions..."
             />
-            {errorMessage && <p className="text-sm text-red-400 mb-2">{errorMessage}</p>}
-            <div className="flex gap-2">
+            <div className="flex gap-4">
               <button
                 type="button"
                 onClick={() => {
@@ -2355,17 +2389,17 @@ export default function RuralDashboardPage() {
                   setSelectedSpecialistId(null);
                   setRuralMessage("");
                 }}
-                className="flex-1 rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                className="glass-btn-secondary flex-1 justify-center"
               >
-                Cancel
+                Abort
               </button>
               <button
                 type="button"
                 onClick={handleConfirmSubmitWithSpecialist}
                 disabled={!selectedSpecialistId || !pendingPriority || submittingCase}
-                className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-blue-600 disabled:opacity-50"
+                className="glass-btn-primary flex-1 justify-center"
               >
-                {submittingCase ? "Submitting..." : "Confirm"}
+                {submittingCase ? "Transmitting..." : "Confirm & Send"}
               </button>
             </div>
           </div>

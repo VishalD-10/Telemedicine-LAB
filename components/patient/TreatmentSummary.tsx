@@ -16,28 +16,28 @@ export default function TreatmentSummary({
   referralRecommendation,
 }: TreatmentSummaryProps) {
   return (
-    <section className="rounded-2xl border border-white/50 bg-gradient-to-br from-white/80 to-blue-100/50 p-5 shadow-md backdrop-blur-xl transition-all duration-300 animate-in fade-in-0 slide-in-from-bottom-2 hover:-translate-y-1 hover:shadow-lg">
-      <h3 className="text-lg font-semibold text-slate-800">Treatment Advice</h3>
-      <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
-        <div className="rounded-xl bg-white/80 p-3 md:col-span-2">
-          <p className="text-xs text-slate-500">Treatment plan name</p>
-          <p className="mt-1 whitespace-pre-wrap text-slate-700">{treatmentTitle || "-"}</p>
+    <section className="glass-panel p-6 w-full flex flex-col h-full hover:-translate-y-1 transition-transform duration-300">
+      <h3 className="medical-caption text-emerald-700 mb-4">Treatment Advice</h3>
+      <div className="grid gap-4 text-sm md:grid-cols-2">
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 md:col-span-2 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Treatment plan name</p>
+          <p className="font-bold text-slate-900 whitespace-pre-wrap">{treatmentTitle || "-"}</p>
         </div>
-        <div className="rounded-xl bg-white/80 p-3">
-          <p className="text-xs text-slate-500">Medication overview</p>
-          <p className="mt-1 whitespace-pre-wrap text-slate-700">{medicationOverview || "-"}</p>
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Medication overview</p>
+          <p className="font-medium text-slate-700 whitespace-pre-wrap leading-relaxed">{medicationOverview || "-"}</p>
         </div>
-        <div className="rounded-xl bg-white/80 p-3">
-          <p className="text-xs text-slate-500">Lifestyle advice</p>
-          <p className="mt-1 whitespace-pre-wrap text-slate-700">{lifestyleAdvice || "-"}</p>
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Lifestyle advice</p>
+          <p className="font-medium text-slate-700 whitespace-pre-wrap leading-relaxed">{lifestyleAdvice || "-"}</p>
         </div>
-        <div className="rounded-xl bg-white/80 p-3">
-          <p className="text-xs text-slate-500">Rehabilitation guidance</p>
-          <p className="mt-1 whitespace-pre-wrap text-slate-700">{rehabGuidance || "-"}</p>
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Rehabilitation guidance</p>
+          <p className="font-medium text-slate-700 whitespace-pre-wrap leading-relaxed">{rehabGuidance || "-"}</p>
         </div>
-        <div className="rounded-xl bg-white/80 p-3">
-          <p className="text-xs text-slate-500">Referral recommendation</p>
-          <p className="mt-1 whitespace-pre-wrap text-slate-700">{referralRecommendation || "-"}</p>
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Referral recommendation</p>
+          <p className="font-medium text-slate-700 whitespace-pre-wrap leading-relaxed">{referralRecommendation || "-"}</p>
         </div>
       </div>
     </section>

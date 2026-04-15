@@ -233,38 +233,33 @@ export default function LoginPage() {
         ? "Create your Tele-Pulmonology account to start assisting patients remotely."
         : "Access the Tele-Pulmonology network and collaborate with specialists for faster respiratory diagnosis.";
 
-  const baseInputClass =
-    "w-full rounded-full px-5 py-3 border outline-none bg-white border-gray-300 text-slate-900 placeholder:text-slate-500 dark:bg-white/10 dark:border-white/20 dark:text-white dark:placeholder:text-slate-300";
-
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-white via-slate-100 to-blue-100 text-gray-900 dark:from-black dark:via-slate-900 dark:to-blue-900 dark:text-slate-100">
+    <div className="page-transition-shell relative min-h-screen">
       {view === "initial" && (
-        <>
-          <div className="pointer-events-none absolute left-1/2 top-1/2 h-[26rem] w-[26rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/20 blur-3xl dark:bg-blue-500/25" />
-          <div className="mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-center gap-10 px-6 py-10 md:px-10 lg:grid-cols-2">
-            <div className="rounded-3xl border border-gray-200 bg-white/70 p-8 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-white/5 md:p-12">
-              <h1 className="text-4xl font-bold leading-tight md:text-5xl">
-                Remote <span className="text-blue-400">Pulmonary Care</span>,
-                <br />
-                Anywhere.
-              </h1>
-              <p className="mt-6 max-w-xl text-base leading-relaxed text-gray-600 dark:text-slate-300 md:text-lg">
-                AI-assisted tele-pulmonology platform connecting rural doctors with specialists for rapid diagnosis using vitals, spirometry, and chest X-ray analysis.
-              </p>
-              <button
-                type="button"
-                onClick={handleInitialLogin}
-                className="mt-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-3 font-medium text-white transition-all hover:from-blue-600 hover:to-indigo-700"
-              >
-                Let&apos;s Login
-              </button>
-            </div>
-            <div className="rounded-3xl border border-gray-200 bg-white/70 p-6 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-white/5 md:p-8">
+        <div className="mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-center gap-10 px-6 py-10 md:px-10 lg:grid-cols-2 z-10 relative">
+          <div className="glass-panel p-8 md:p-12">
+            <h1 className="text-4xl font-bold leading-tight md:text-5xl tracking-tight text-slate-800 dark:text-slate-100">
+              Remote <span className="text-blue-600 dark:text-blue-400">Pulmonary Care</span>,
+              <br />
+              Anywhere.
+            </h1>
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-slate-600 dark:text-slate-300 md:text-lg">
+              AI-assisted tele-pulmonology platform connecting rural doctors with specialists for rapid diagnosis using vitals, spirometry, and chest X-ray analysis.
+            </p>
+            <button
+              type="button"
+              onClick={handleInitialLogin}
+              className="glass-btn-primary mt-8 py-3 px-8 text-base"
+            >
+              Let&apos;s Login
+            </button>
+          </div>
+          <div className="glass-panel p-6 md:p-8">
               <div className="grid grid-cols-3 gap-4 md:gap-6">
                 {medicalIcons.map(({ label, Icon }, index) => (
                   <div
                     key={label}
-                    className="animate-float rounded-2xl bg-white/10 p-4 shadow-lg backdrop-blur-xl dark:bg-white/10 md:p-6"
+                    className="animate-float rounded-2xl bg-white/80 border border-slate-200/50 p-4 shadow-sm backdrop-blur-xl dark:border-white/5 dark:bg-black/20 md:p-6"
                     style={{ animationDelay: `${index * 0.2}s` }}
                   >
                     <Icon className="mx-auto h-8 w-8 text-blue-500 dark:text-blue-300 md:h-10 md:w-10" />
@@ -275,8 +270,7 @@ export default function LoginPage() {
                 ))}
               </div>
             </div>
-          </div>
-        </>
+        </div>
       )}
 
       {view !== "initial" && (
@@ -291,10 +285,10 @@ export default function LoginPage() {
 
       {view !== "initial" && (
         <div className="relative z-10 flex min-h-screen w-full items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white/70 p-8 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+          <div className="w-full max-w-md glass-panel p-8">
             <header className="mb-8 text-center">
-              <h1 className="text-center text-3xl font-semibold text-slate-900 dark:text-white">{authTitle}</h1>
-              <p className="mt-3 text-center text-sm text-slate-500 dark:text-slate-400">{authSubtitle}</p>
+              <h1 className="text-center text-3xl font-bold tracking-tight text-slate-800 dark:text-white">{authTitle}</h1>
+              <p className="mt-3 text-center text-sm font-medium text-slate-500 dark:text-slate-400">{authSubtitle}</p>
             </header>
 
             {view === "role-selection" && (
@@ -302,21 +296,21 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => handleRoleSelect("patient")}
-                  className="w-full rounded-full py-3 text-white font-medium bg-gradient-to-r from-blue-500 to-indigo-600 transition hover:from-blue-600 hover:to-indigo-700"
+                  className="w-full glass-btn-primary py-3"
                 >
                   Patient
                 </button>
                 <button
                   type="button"
                   onClick={() => handleRoleSelect("rural_doctor")}
-                  className="w-full rounded-full py-3 text-white font-medium bg-gradient-to-r from-blue-500 to-indigo-600 transition hover:from-blue-600 hover:to-indigo-700"
+                  className="w-full glass-btn-primary py-3"
                 >
                   Rural Doctor
                 </button>
                 <button
                   type="button"
                   onClick={() => handleRoleSelect("specialist")}
-                  className="w-full rounded-full py-3 text-white font-medium bg-gradient-to-r from-blue-500 to-indigo-600 transition hover:from-blue-600 hover:to-indigo-700"
+                  className="w-full glass-btn-primary py-3"
                 >
                   Specialist
                 </button>
@@ -341,7 +335,7 @@ export default function LoginPage() {
                   value={patientId}
                   onChange={(e) => setPatientId(e.target.value)}
                   placeholder="Patient ID"
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
                 <input
@@ -349,14 +343,14 @@ export default function LoginPage() {
                   value={patientPhone}
                   onChange={(e) => setPatientPhone(e.target.value)}
                   placeholder="Phone Number"
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
-                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                {error && <p className="text-sm font-medium text-red-500 dark:text-red-400">{error}</p>}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-full py-3 text-white font-medium bg-gradient-to-r from-blue-500 to-indigo-600 transition hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50"
+                  className="w-full glass-btn-primary py-3 mt-4"
                 >
                   {loading ? "Signing in..." : "Login"}
                 </button>
@@ -381,7 +375,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email"
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
                 <input
@@ -389,14 +383,14 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Password"
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
-                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                {error && <p className="text-sm font-medium text-red-500 dark:text-red-400">{error}</p>}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-full py-3 text-white font-medium bg-gradient-to-r from-blue-500 to-indigo-600 transition hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50"
+                  className="w-full glass-btn-primary py-3 mt-4"
                 >
                   {loading ? "Signing in..." : "Login"}
                 </button>
@@ -436,7 +430,7 @@ export default function LoginPage() {
                   placeholder="Name"
                   value={regName}
                   onChange={(e) => setRegName(e.target.value)}
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
                 <input
@@ -444,7 +438,7 @@ export default function LoginPage() {
                   placeholder="Doctor Verification ID"
                   value={regDoctorId}
                   onChange={(e) => setRegDoctorId(e.target.value)}
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
                 <input
@@ -452,7 +446,7 @@ export default function LoginPage() {
                   placeholder="Phone Number"
                   value={regPhoneNumber}
                   onChange={(e) => setRegPhoneNumber(e.target.value)}
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
                 <input
@@ -460,13 +454,13 @@ export default function LoginPage() {
                   placeholder="Hospital Location"
                   value={regHospitalLocation}
                   onChange={(e) => setRegHospitalLocation(e.target.value)}
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
-                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                {error && <p className="text-sm font-medium text-red-500 dark:text-red-400">{error}</p>}
                 <button
                   type="submit"
-                  className="w-full rounded-full py-3 text-white font-medium bg-gradient-to-r from-blue-500 to-indigo-600 transition hover:from-blue-600 hover:to-indigo-700"
+                  className="w-full glass-btn-primary py-3"
                 >
                   Next
                 </button>
@@ -494,7 +488,7 @@ export default function LoginPage() {
                   placeholder="Email"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
                 <input
@@ -502,7 +496,7 @@ export default function LoginPage() {
                   placeholder="Password"
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
                 <input
@@ -510,14 +504,14 @@ export default function LoginPage() {
                   placeholder="Confirm Password"
                   value={regConfirmPassword}
                   onChange={(e) => setRegConfirmPassword(e.target.value)}
-                  className={baseInputClass}
+                  className="glass-input"
                   required
                 />
-                {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+                {error && <p className="text-sm font-medium text-red-500 dark:text-red-400">{error}</p>}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-full py-3 text-white font-medium bg-gradient-to-r from-blue-500 to-indigo-600 transition hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50"
+                  className="w-full glass-btn-primary py-3"
                 >
                   {loading ? "Registering..." : "Next"}
                 </button>

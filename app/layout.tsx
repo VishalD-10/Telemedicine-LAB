@@ -8,8 +8,8 @@ export default function RootLayout({
   children: ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className="font-sans">
+      <body className="antialiased bg-slate-50 text-slate-900 min-h-screen relative overflow-x-hidden selection:bg-blue-500/30">
         <PageTransition>{children}</PageTransition>
       </body>
     </html>

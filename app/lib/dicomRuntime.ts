@@ -9,7 +9,7 @@ export async function fetchRenderedDicom(dicomPath: string): Promise<DicomRender
   const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/render-dicom`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: dicomPath }),
+    body: JSON.stringify({ bucket: "x_rays", path: dicomPath }),
   });
 
   if (!response.ok) {

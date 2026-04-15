@@ -10,7 +10,7 @@ type GlassCardProps = {
 export default function GlassCard({ children, className = "", ...props }: GlassCardProps) {
   return (
     <div
-      className={`medical-glass-card rounded-2xl border border-white/50 bg-white/60 p-5 shadow-lg backdrop-blur-xl ${className}`}
+      className={`medical-glass-card rounded-2xl border border-slate-200/80 bg-white/85 p-5 text-slate-900 shadow-lg backdrop-blur-xl ${className}`}
       {...props}
     >
       {children}

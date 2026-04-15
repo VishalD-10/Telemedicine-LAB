@@ -16,27 +16,30 @@ export default function DiagnosisSummary({
   date,
 }: DiagnosisSummaryProps) {
   return (
-    <section className="rounded-2xl border border-white/50 bg-gradient-to-br from-white/80 to-blue-100/50 p-5 shadow-md backdrop-blur-xl transition-all duration-300 animate-in fade-in-0 slide-in-from-bottom-2 hover:-translate-y-1 hover:shadow-lg">
-      <h3 className="text-lg font-semibold text-slate-800">Specialist Diagnosis</h3>
-      <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
-        <div className="rounded-xl bg-white/80 p-3">
-          <p className="text-xs text-slate-500">Diagnosis</p>
-          <p className="mt-1 font-medium text-slate-800">{diagnosisName || "-"}</p>
+    <section className="glass-panel p-6 w-full flex flex-col h-full hover:-translate-y-1 transition-transform duration-300">
+      <h3 className="medical-caption text-blue-700 mb-4">Specialist Diagnosis</h3>
+      <div className="grid gap-4 text-sm md:grid-cols-2">
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Diagnosis</p>
+          <p className="font-bold text-slate-900">{diagnosisName || "-"}</p>
         </div>
-        <div className="rounded-xl bg-white/80 p-3">
-          <p className="text-xs text-slate-500">Severity</p>
-          <p className="mt-1 font-medium capitalize text-slate-800">{severity || "-"}</p>
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Severity</p>
+          <p className="font-bold capitalize text-slate-900">{severity || "-"}</p>
         </div>
-        <div className="rounded-xl bg-white/80 p-3">
-          <p className="text-xs text-slate-500">Notes</p>
-          <p className="mt-1 whitespace-pre-wrap font-medium text-slate-800">{explanation || "-"}</p>
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Notes</p>
+          <p className="whitespace-pre-wrap font-medium text-slate-700 leading-relaxed">{explanation || "-"}</p>
         </div>
-        <div className="rounded-xl bg-white/80 p-3">
-          <p className="text-xs text-slate-500">Date</p>
-          <p className="mt-1 font-medium text-slate-800">{date ? new Date(date).toLocaleString() : "-"}</p>
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-4 transition hover:bg-white">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-slate-600 mb-2">Date</p>
+          <p className="font-medium text-slate-700">{date ? new Date(date).toLocaleString() : "-"}</p>
         </div>
       </div>
-      <p className="mt-3 text-xs text-slate-500">Specialist: {doctorName || "-"}</p>
+      <div className="mt-6 flex justify-between items-center bg-blue-50 border border-blue-200 px-4 py-3 rounded-xl shadow-inner">
+        <span className="text-[10px] uppercase tracking-widest font-bold text-blue-700">Attending Specialist</span>
+        <span className="text-sm font-bold text-slate-900 tracking-wide">{doctorName || "Pending Assignment"}</span>
+      </div>
     </section>
   );
 }

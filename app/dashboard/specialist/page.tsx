@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import dynamicImport from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { Activity, History, LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import DiagnosisPanel from "@/components/specialist/DiagnosisPanel";
 import TreatmentPanel from "@/components/specialist/TreatmentPanel";
@@ -298,7 +299,7 @@ export default function SpecialistDashboardPage() {
 
   useEffect(() => {
     if (!error) return;
-    const timer = setTimeout(() => setError(null), 3000);
+    const timer = setTimeout(() => setError(null), 5500);
     return () => clearTimeout(timer);
   }, [error]);
 
@@ -483,8 +484,8 @@ export default function SpecialistDashboardPage() {
     );
   };
 
-  const saveCaseDiagnosis = async () => {
-    if (!reviewData || !userId) return;
+  const saveCaseDiagnosis = async (): Promise<{ success?: boolean; error?: string }> => {
+    if (!reviewData || !userId) return { error: "Not ready" };
     setDiagnosisSaving(true);
     const hasTemplate = Boolean(diagnosisForm.diagnosisTemplateId);
     const selectedDiagnosisId = hasTemplate ? diagnosisForm.diagnosisTemplateId : null;
@@ -503,13 +504,14 @@ export default function SpecialistDashboardPage() {
     setDiagnosisSaving(false);
     if (saveErr) {
       setError(saveErr.message);
-      return;
+      return { error: saveErr.message };
     }
     setTimelineLocalTimestamps((prev) => ({ ...prev, diagnosisCompleted: new Date().toISOString() }));
+    return { success: true };
   };
 
-  const saveTreatmentPlan = async () => {
-    if (!reviewData || !userId) return;
+  const saveTreatmentPlan = async (): Promise<{ success?: boolean; error?: string }> => {
+    if (!reviewData || !userId) return { error: "Not ready" };
     setTreatmentSaving(true);
     const payload = {
       case_id: reviewData.caseId,
@@ -527,24 +529,25 @@ export default function SpecialistDashboardPage() {
     setTreatmentSaving(false);
     if (saveErr) {
       setError(saveErr.message);
-      return;
+      return { error: saveErr.message };
     }
     setTimelineLocalTimestamps((prev) => ({ ...prev, treatmentGenerated: new Date().toISOString() }));
+    return { success: true };
   };
 
-  const savePrescription = async () => {
-    if (!reviewData || !userId) return;
+  const savePrescription = async (): Promise<{ success?: boolean; error?: string }> => {
+    if (!reviewData || !userId) return { error: "Not ready" };
     setPrescriptionSaving(true);
     const { error: deleteErr } = await supabase.from("prescriptions").delete().eq("case_id", reviewData.caseId);
     if (deleteErr) {
       setPrescriptionSaving(false);
       setError(deleteErr.message);
-      return;
+      return { error: deleteErr.message };
     }
     const cleanRows = prescriptionRows.filter((row) => row.medication.trim());
     if (cleanRows.length === 0) {
       setPrescriptionSaving(false);
-      return;
+      return { success: true };
     }
     const payload = cleanRows.map((row) => ({
       case_id: reviewData.caseId,
@@ -560,11 +563,13 @@ export default function SpecialistDashboardPage() {
     setPrescriptionSaving(false);
     if (saveErr) {
       setError(saveErr.message);
+      return { error: saveErr.message };
     }
+    return { success: true };
   };
 
-  const saveFollowup = async () => {
-    if (!reviewData || !userId) return;
+  const saveFollowup = async (): Promise<{ success?: boolean; error?: string }> => {
+    if (!reviewData || !userId) return { error: "Not ready" };
     setFollowupSaving(true);
     const diagnosticsToSave =
       furtherDiagnosticsTests?.length ? furtherDiagnosticsTests : [];
@@ -581,9 +586,10 @@ export default function SpecialistDashboardPage() {
     setFollowupSaving(false);
     if (saveErr) {
       setError(saveErr.message);
-      return;
+      return { error: saveErr.message };
     }
     setTimelineLocalTimestamps((prev) => ({ ...prev, followupScheduled: new Date().toISOString() }));
+    return { success: true };
   };
 
   const handleLogout = async () => {
@@ -797,26 +803,41 @@ export default function SpecialistDashboardPage() {
       if (active) setBaseDataReady(true);
     };
     loadBase();
+    
+    const interval = setInterval(() => {
+      if (active) {
+        loadRequests(userId);
+        // Only load past cases on real-time event to save heavy queries,
+        // but load requests frequently.
+      }
+    }, 5000);
+    
     return () => {
       active = false;
+      clearInterval(interval);
     };
   }, [userId]);
 
   useEffect(() => {
+    if (!userId) return;
+    // Capture userId in the closure directly so the event handlers
+    // always call loadRequests with the correct id, even after re-renders.
+    const uid = userId;
     const channel = supabase
-      .channel("specialist-realtime")
+      .channel(`specialist-realtime-${uid}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "specialist_requests" },
         () => {
-          refetchRequests();
+          loadRequests(uid);
         }
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "cases" },
         () => {
-          refetchCases();
+          loadRequests(uid);
+          loadPastCasesForSpecialist();
         }
       )
       .subscribe();
@@ -1085,6 +1106,14 @@ export default function SpecialistDashboardPage() {
         .select("scheduled_date, notes, diagnostic_procedures, created_at")
         .eq("case_id", caseIdFromRow);
       const followup = followupRows?.[0] ?? null;
+
+      // Fetch specialist_requests to get accepted_at / completed_at for the timeline
+      const { data: reqRows } = await supabase
+        .from("specialist_requests")
+        .select("accepted_at, completed_at")
+        .eq("case_id", caseIdFromRow)
+        .limit(1);
+      const reqRow = (reqRows?.[0] ?? null) as { accepted_at?: string | null; completed_at?: string | null } | null;
       const diagnosticsValue = (followup as { diagnostic_procedures?: unknown } | null)?.diagnostic_procedures;
       const furtherDiagnostics = Array.isArray(diagnosticsValue)
         ? diagnosticsValue.map((item) => String(item)).filter(Boolean)
@@ -1166,8 +1195,8 @@ export default function SpecialistDashboardPage() {
         follow_up_notes: null,
         case_status: c.status ?? null,
         specialist_name: specialistNameFromCase,
-        specialist_accepted_at: null,
-        specialist_completed_at: null,
+        specialist_accepted_at: reqRow?.accepted_at ?? null,
+        specialist_completed_at: reqRow?.completed_at ?? null,
         case_created_at: c.created_at ?? null,
         diagnosis: (diagnosis as { diagnosis_name?: string | null; severity?: string | null; specialist_notes?: string | null; created_at?: string | null } | null)
           ? {
@@ -1266,14 +1295,14 @@ export default function SpecialistDashboardPage() {
                 : null,
               timeline: {
                 case_created_at: c.created_at ?? null,
-                specialist_accepted_at: null,
+                specialist_accepted_at: reqRow?.accepted_at ?? null,
                 diagnosis_submitted_at: (diagnosis as { created_at?: string | null })?.created_at ?? null,
                 treatment_generated_at: (treatment as { created_at?: string | null })?.created_at ?? null,
                 followup_scheduled_at: (followup as { created_at?: string | null })?.created_at ?? null,
-                case_finalized_at: null,
+                case_finalized_at: reqRow?.completed_at ?? null,
               },
-              specialist_accepted_at: null,
-              specialist_completed_at: null,
+              specialist_accepted_at: reqRow?.accepted_at ?? null,
+              specialist_completed_at: reqRow?.completed_at ?? null,
               case_created_at: c.created_at ?? null,
             }
           : null,
@@ -1284,12 +1313,12 @@ export default function SpecialistDashboardPage() {
   };
 
   return (
-    <div className="flex min-h-screen h-screen will-change-auto bg-gray-50">
-      <aside className="w-64 h-screen bg-white shadow-md border-r border-gray-200 p-6 flex flex-col justify-between">
+    <div className="flex h-screen overflow-hidden theme-specialist page-transition-shell text-slate-900">
+      <aside className="glass-panel hidden w-64 flex-col justify-between p-6 md:fixed md:left-6 md:top-6 md:flex md:h-[calc(100vh-3rem)] z-50">
         <div>
-          <h1 className="text-xl font-semibold text-gray-800">Tele-Pulmonology</h1>
-          <p className="text-sm text-gray-800 mt-1">Specialist Dashboard</p>
-          <div className="mt-8 space-y-2">
+          <h1 className="text-xl font-semibold tracking-wide">Tele-Pulmonology</h1>
+          <p className="px-2 mt-4 mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-blue-300">Specialist Dashboard</p>
+          <div className="space-y-3">
             <button
               type="button"
               onClick={() => {
@@ -1297,13 +1326,14 @@ export default function SpecialistDashboardPage() {
                 setViewingPastCaseData(null);
                 viewingPastCaseIdRef.current = null;
               }}
-              className={`w-full text-left rounded-xl px-4 py-3 text-sm font-medium ${
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 transition duration-300 ${
                 viewState === "list" || viewState === "accept" || viewState === "review"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-800 border border-gray-200"
+                  ? "bg-blue-600/80 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] border border-blue-400/50"
+                  : "bg-white/5 text-slate-300 hover:bg-white/10 border border-transparent hover:border-white/10"
               }`}
             >
-              Active Requests
+              <Activity className="h-4 w-4" />
+              <span>Active Requests</span>
             </button>
             <button
               type="button"
@@ -1312,47 +1342,61 @@ export default function SpecialistDashboardPage() {
                 setViewingPastCaseData(null);
                 viewingPastCaseIdRef.current = null;
               }}
-              className={`w-full text-left rounded-xl px-4 py-3 text-sm font-medium ${
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 transition duration-300 ${
                 viewState === "past" || Boolean(viewingPastCaseData)
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-800 border border-gray-200"
+                  ? "bg-blue-600/80 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] border border-blue-400/50"
+                  : "bg-white/5 text-slate-300 hover:bg-white/10 border border-transparent hover:border-white/10"
               }`}
             >
-              Past Cases
+              <History className="h-4 w-4" />
+              <span>Past Cases</span>
             </button>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+          className="glass-btn-danger w-full justify-center"
         >
-          Logout
+          <LogOut className="h-4 w-4" />
+          <span>Logout</span>
         </button>
       </aside>
 
-      <div className="flex-1 overflow-y-auto p-8 space-y-6">
-      <div className="flex items-start justify-between">
+      <main className="flex-1 p-6 md:ml-[300px] md:p-8 xl:p-12 relative z-10 page-transition-content h-screen overflow-y-auto space-y-6 scroll-smooth">
+      <div className="glass-panel p-8 mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-        <h1 className="text-2xl font-semibold text-slate-800">
+        <h1 className="medical-h1">
           Welcome back Dr. {profile?.full_name ?? "Specialist"}
         </h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="medical-body">
           Active requests and case review. Review patient data and submit your diagnosis.
         </p>
+        </div>
         {profile && (
-          <div className="mt-2 rounded-lg border border-white/40 bg-white/70 px-4 py-2 text-sm text-slate-700 backdrop-blur-xl">
-            <span className="font-medium text-slate-800">Doctor:</span> {profile.full_name ?? "-"}
+          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white backdrop-blur-md flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600/50 border border-blue-400/30 text-sm font-semibold text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]">
+              {profile.full_name?.slice(0, 1).toUpperCase() ?? "S"}
+            </div>
+            <div>
+              <p className="text-sm font-medium">Dr. {profile.full_name ?? "Specialist"}</p>
+              <p className="text-xs text-blue-300">Specialist Profile</p>
+            </div>
           </div>
         )}
-        </div>
       </div>
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+      {/* Global error popup toast - top-right, auto-dismisses after 5.5s */}
+      {error && (
+        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          <span>❌</span>
+          <span>{error}</span>
+        </div>
+      )}
 
       {viewState === "list" && (
         <>
-          <section className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
-            <h2 className="text-sm font-semibold text-gray-800">ACTIVE REQUESTS</h2>
-            <div className="mt-2 flex gap-2">
+          <section className="glass-panel p-6 animate-in fade-in zoom-in-95 duration-500">
+            <h2 className="medical-caption text-blue-400 mb-2">ACTIVE REQUESTS</h2>
+            <div className="mt-2 flex gap-4">
               <button
                 type="button"
                 onClick={() => setActiveTab("emergency")}
@@ -1376,39 +1420,45 @@ export default function SpecialistDashboardPage() {
                 Normal {normalPending.length > 0 && `(${normalPending.length})`}
               </button>
             </div>
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 space-y-4">
               {activeList.length === 0 ? (
-            <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6 text-gray-800">
-                  No {activeTab === "emergency" ? "emergency" : "normal"} requests at the moment.
+                <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center text-slate-400 backdrop-blur-md">
+                  No {activeTab === "emergency" ? "emergency" : "normal"} requests currently queued.
                 </div>
               ) : (
                 activeList.map((r) => (
                   <div
                     key={r.id}
-                    className={`rounded-xl p-4 shadow-md bg-white ${
-                      r.case_priority === "emergency" ? "border-l-4 border-red-400" : "border border-gray-200"
+                    className={`rounded-xl border p-5 transition hover:bg-white/5 ${
+                      r.case_priority === "emergency"
+                        ? "border-red-500/30 bg-red-500/5 shadow-[0_0_10px_rgba(220,38,38,0.1)]"
+                        : "border-white/10 bg-white/5"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-2 text-sm text-gray-800">
-                        <div className="font-semibold">Patient ID: {r.generated_patient_id ?? r.patient_name ?? "-"}</div>
-                        <div>
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                      <div className="space-y-3 text-sm text-slate-300">
+                        <div className="font-semibold text-lg text-white">Patient ID: <span className="text-blue-300">{r.generated_patient_id ?? r.patient_name ?? "-"}</span></div>
+                        <div className="flex gap-2">
                           <span className={r.case_priority === "emergency"
-                            ? "px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700"
-                            : "px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"}>
-                            {r.case_priority === "emergency" ? "Emergency" : "Normal"}
+                            ? "px-3 py-1 text-xs rounded-full bg-red-600 border border-red-500 text-white shadow-[0_0_10px_rgba(220,38,38,0.5)] font-bold tracking-wider"
+                            : "px-3 py-1 text-xs rounded-full bg-blue-600/30 border border-blue-400/30 text-blue-300"}>
+                            {r.case_priority === "emergency" ? "EMERGENCY" : "NORMAL"}
                           </span>
                         </div>
-                        <div className="text-gray-800">Submitted: {r.created_at ? new Date(r.created_at).toLocaleString() : "-"}</div>
-                        <div className="text-gray-800">Rural Doctor: {r.ruralDoctorName ?? "-"}</div>
-                        <div className="text-gray-800">Message: {r.rural_message ?? "-"}</div>
+                        <div className="flex flex-col sm:flex-row gap-x-6 gap-y-1 mt-2">
+                          <div><span className="text-slate-500">Submitted:</span> {r.created_at ? new Date(r.created_at).toLocaleString() : "-"}</div>
+                          <div><span className="text-slate-500">Rural Partner:</span> {r.ruralDoctorName ?? "-"}</div>
+                        </div>
+                        <div className="rounded border border-white/5 bg-black/20 p-3 italic text-slate-400">"{r.rural_message ?? "No additional directives provided"}"</div>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleViewAccept(r)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+                        className={`glass-btn-primary self-start md:self-center px-8 py-3 ${
+                          r.case_priority === "emergency" ? "bg-red-600/80 hover:bg-red-500 border border-red-500 shadow-[0_0_15px_rgba(220,38,38,0.5)]" : ""
+                        }`}
                       >
-                        View Case
+                        Acknowledge & View Case
                       </button>
                     </div>
                   </div>
@@ -1416,22 +1466,24 @@ export default function SpecialistDashboardPage() {
               )}
             </div>
             {acceptedRequests.length > 0 && (
-              <div className="mt-4">
-                <h3 className="text-xs font-medium text-gray-800">In progress (accepted, not yet completed)</h3>
-                <div className="mt-2 space-y-2">
+              <div className="mt-8 border-t border-white/10 pt-6">
+                <h3 className="medical-caption text-emerald-400 mb-4">IN PROGRESS (ACCEPTED, PENDING FINALIZATION)</h3>
+                <div className="space-y-3">
                   {acceptedRequests.map((r) => (
                     <div
                       key={r.id}
-                      className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                      className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-900/10 px-5 py-4 text-sm backdrop-blur-sm transition hover:bg-emerald-900/20"
                     >
-                      <span className="text-gray-800">{r.patient_name ?? "-"}</span>
-                      <span className="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700">Accepted</span>
+                      <div className="flex items-center gap-4">
+                        <span className="text-white font-medium">{r.patient_name ?? "-"}</span>
+                        <span className="px-3 py-1 text-xs rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300">Accepted</span>
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleOpenReview(r)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+                        className="glass-btn-secondary px-6"
                       >
-                        Review
+                        Resume Review
                       </button>
                     </div>
                   ))}
@@ -1443,36 +1495,38 @@ export default function SpecialistDashboardPage() {
       )}
 
       {viewState === "past" && !viewingPastCaseData && !pastCaseLoading && (
-          <section className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
-          <h2 className="text-sm font-semibold text-gray-800">PAST CASES</h2>
+          <section className="glass-panel p-6 animate-in fade-in zoom-in-95 duration-500">
+          <h2 className="medical-caption text-blue-400 mb-4">PAST CASES PROTOCOL</h2>
           <div className="mt-4">
-            <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-y-auto overflow-x-hidden" style={{ maxHeight: 480 }}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-blue-600 text-white text-sm text-left">
-                    <th className="px-4 py-3">Index</th>
-                    <th className="px-4 py-3">Patient ID</th>
-                    <th className="px-4 py-3">Emergency / Normal</th>
-                    <th className="px-4 py-3">Rural Doctor Name</th>
-                    <th className="px-4 py-3">View Details</th>
+            <div className="rounded-xl border border-white/10 bg-black/20 overflow-hidden overflow-y-auto" style={{ maxHeight: 600 }}>
+              <table className="w-full text-sm text-left align-middle text-slate-300">
+                <thead className="bg-white/5 border-b border-white/10 text-slate-400 text-xs uppercase tracking-wider sticky top-0 backdrop-blur-xl">
+                  <tr>
+                    <th className="px-6 py-4 font-medium">Index</th>
+                    <th className="px-6 py-4 font-medium">Patient ID</th>
+                    <th className="px-6 py-4 font-medium">Priority</th>
+                    <th className="px-6 py-4 font-medium">Rural Doctor Name</th>
+                    <th className="px-6 py-4 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/5">
                   {pastRequests.map((r, i) => (
-                    <tr key={r.id} className="hover:bg-blue-50 border border-blue-200 transition border-b border-blue-100">
-                      <td className="px-4 py-3 text-gray-800">{i + 1}</td>
-                      <td className="px-4 py-3 text-gray-800">{r.generated_patient_id ?? "-"}</td>
-                      <td className="px-4 py-3 text-gray-800">
-                        <span className={r.case_priority === "emergency" ? "px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700" : "px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"}>
+                    <tr key={r.id} className="transition-colors hover:bg-white/5">
+                      <td className="px-6 py-4">{i + 1}</td>
+                      <td className="px-6 py-4 font-medium text-slate-200">{r.generated_patient_id ?? "-"}</td>
+                      <td className="px-6 py-4">
+                        <span className={r.case_priority === "emergency" 
+                          ? "px-3 py-1 text-xs rounded-full bg-red-500/20 border border-red-500/30 text-red-300 font-medium" 
+                          : "px-3 py-1 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 font-medium"}>
                           {r.case_priority === "emergency" ? "Emergency" : "Normal"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-800">{r.ruralDoctorName}</td>
-                      <td className="px-4 py-3 text-gray-800">
+                      <td className="px-6 py-4">{r.ruralDoctorName}</td>
+                      <td className="px-6 py-4 text-right">
                         <button
                           type="button"
                           onClick={() => loadFullCaseSummary(r.case_id, r.patient_id ?? "")}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+                          className="px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/40 border border-blue-500/30 transition shadow-sm"
                         >
                           View Details
                         </button>
@@ -1488,39 +1542,42 @@ export default function SpecialistDashboardPage() {
 
       {viewState === "accept" ? (
         selectedRequest ? (
-            <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900">Accept Request</h2>
-          <p className="mt-1 text-sm text-gray-800">
-            Patient: {selectedRequest.patient_name ?? "-"} - {selectedRequest.case_priority === "emergency" ? "Emergency" : "Normal"}
+            <div className="glass-panel p-8 max-w-2xl mx-auto shadow-2xl animate-in flip-in-x-90 duration-500">
+          <h2 className="medical-h2 text-blue-400 mb-2">Accept Request</h2>
+          <p className="text-slate-300 text-sm mb-6 pb-6 border-b border-white/10">
+            Patient: <span className="font-semibold text-white">{selectedRequest.patient_name ?? "-"}</span>
+            <span className={`ml-3 px-3 py-1 text-xs rounded-full ${selectedRequest.case_priority === "emergency" ? "bg-red-500/20 text-red-300 border border-red-500/30" : "bg-blue-500/20 text-blue-300 border border-blue-500/30"}`}>
+              {selectedRequest.case_priority === "emergency" ? "Emergency" : "Normal"}
+            </span>
           </p>
-          <form onSubmit={handleAcceptRequest} className="mt-4 space-y-4">
+          <form onSubmit={handleAcceptRequest} className="mt-4 space-y-6">
             <div>
-              <label className="block text-sm text-gray-800">Message (optional)</label>
+              <label className="medical-caption text-slate-300 mb-2 block ml-1">Message for Originating Doctor (Optional)</label>
               <textarea
                 rows={3}
-                className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 bg-white placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500"
+                className="glass-input w-full"
                 value={acceptMessage}
                 onChange={(e) => setAcceptMessage(e.target.value)}
-                placeholder="Message for the rural doctor"
+                placeholder="Acknowledge receipt or ask for supplementary protocol..."
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-4 pt-4">
               <button
                 type="button"
                 onClick={() => {
                   setSelectedRequest(null);
                   setViewState("list");
                 }}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 hover:bg-gray-100"
+                className="glass-btn-secondary flex-1 justify-center"
               >
-                Cancel
+                Decline / Cancel
               </button>
               <button
                 type="submit"
                 disabled={accepting}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow disabled:opacity-50"
+                className="glass-btn-primary flex-1 justify-center"
               >
-                {accepting ? "Accepting..." : "Accept Request"}
+                {accepting ? "Transmitting..." : "Accept Case"}
               </button>
             </div>
           </form>
@@ -1532,29 +1589,29 @@ export default function SpecialistDashboardPage() {
 
       {viewState === "review" ? (
         reviewData ? (
-          <div className="space-y-4">
-          <button
-            type="button"
-            onClick={() => {
-              setReviewData(null);
-              resetExtendedReviewState();
-              setViewState("list");
-            }}
-            className="text-sm text-slate-600 hover:text-slate-800"
-          >
-            Back to requests
-          </button>
-          <div className="space-y-6 max-w-6xl mx-auto">
-            <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-gray-900">
-                {reviewData.patientName ?? "Patient"} ({reviewData.generatedPatientId ?? "-"})
-              </h2>
-              <div className="mt-2 flex items-center gap-2">
-                <span className="px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700">Pending</span>
-                {reviewRequest?.accepted_at ? <span className="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700">Accepted</span> : null}
-                {reviewRequest?.completed_at ? <span className="px-3 py-1 text-xs rounded-full bg-green-100 text-green-700">Completed</span> : null}
+          <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
+            <button
+              type="button"
+              onClick={() => {
+                setReviewData(null);
+                resetExtendedReviewState();
+                setViewState("list");
+              }}
+              className="glass-btn-secondary"
+            >
+              ← Return to Pending Queues
+            </button>
+            <div className="space-y-8 max-w-7xl mx-auto">
+              <div className="glass-panel p-8">
+                <h2 className="medical-h2 text-white">
+                  Patient Package: <span className="text-blue-300">{reviewData.patientName ?? "Unknown"}</span> <span className="text-sm font-normal text-slate-400">({reviewData.generatedPatientId ?? "-"})</span>
+                </h2>
+                <div className="mt-4 flex items-center gap-3">
+                  <span className="px-3 py-1 text-xs rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">Review Stage</span>
+                  {reviewRequest?.accepted_at ? <span className="px-3 py-1 text-xs rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300">Accepted Acknowledgment</span> : null}
+                  {reviewRequest?.completed_at ? <span className="px-3 py-1 text-xs rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300">Completed Response</span> : null}
+                </div>
               </div>
-            </div>
 
             <CaseTimeline
               caseId={reviewData.caseId}
@@ -1569,71 +1626,72 @@ export default function SpecialistDashboardPage() {
             />
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="space-y-4">
-                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-3">Patient Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-800">
-                    <div className="bg-white rounded-xl p-3 border border-gray-200">Name: {reviewData.patientName ?? "-"}</div>
-                    <div className="bg-white rounded-xl p-3 border border-gray-200">Age: {reviewData.patientMeta.age ?? "-"}</div>
-                    <div className="bg-white rounded-xl p-3 border border-gray-200">Gender: {reviewData.patientMeta.gender ?? "-"}</div>
-                    <div className="bg-white rounded-xl p-3 border border-gray-200">Height: {reviewData.patientMeta.height_cm ?? "-"}</div>
-                    <div className="bg-white rounded-xl p-3 border border-gray-200">Weight: {reviewData.patientMeta.weight_kg ?? "-"}</div>
+              <div className="space-y-6">
+                <div className="glass-panel p-6">
+                  <h3 className="medical-caption text-blue-400 mb-4">Patient Parameters</h3>
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 text-sm text-slate-300">
+                    <div className="rounded-lg bg-black/20 p-3 border border-white/5"><span className="text-slate-500 block text-xs">Name</span> {reviewData.patientName ?? "-"}</div>
+                    <div className="rounded-lg bg-black/20 p-3 border border-white/5"><span className="text-slate-500 block text-xs">Age</span> {reviewData.patientMeta.age ?? "-"}</div>
+                    <div className="rounded-lg bg-black/20 p-3 border border-white/5"><span className="text-slate-500 block text-xs">Gender</span> {reviewData.patientMeta.gender ?? "-"}</div>
+                    <div className="rounded-lg bg-black/20 p-3 border border-white/5"><span className="text-slate-500 block text-xs">Height</span> {reviewData.patientMeta.height_cm ?? "-"} cm</div>
+                    <div className="rounded-lg bg-black/20 p-3 border border-white/5"><span className="text-slate-500 block text-xs">Weight</span> {reviewData.patientMeta.weight_kg ?? "-"} kg</div>
                   </div>
                 </div>
 
-                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Clinical History</h3>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{reviewData.patientHistory ?? "-"}</p>
+                <div className="glass-panel p-6">
+                  <h3 className="medical-caption text-blue-400 mb-4">Clinical History</h3>
+                  <div className="rounded-lg bg-black/20 p-4 border border-white/5">
+                    <p className="text-sm text-slate-300 whitespace-pre-wrap">{reviewData.patientHistory ?? "No history provided."}</p>
+                  </div>
                 </div>
 
-                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Vitals & Spirometry</h3>
-                  <div className="space-y-2 text-sm text-gray-800">
-                    {reviewData.vitals.length === 0 && reviewData.spirometry.length === 0 && <div>-</div>}
+                <div className="glass-panel p-6">
+                  <h3 className="medical-caption text-blue-400 mb-4">Baseline Vitals & Spirometry</h3>
+                  <div className="space-y-4 text-sm">
+                    {reviewData.vitals.length === 0 && reviewData.spirometry.length === 0 && <div className="text-slate-500 italic">No readings logged</div>}
                     {reviewData.vitals.map((v, i) => (
-                      <div key={`vital-${i}`} className="space-y-1">
-                        <div>
-                          BP: {v.systolic_bp ?? "-"} / {v.diastolic_bp ?? "-"} mmHg
-                        </div>
-                        <div>
-                          Temperature: {v.temperature_f ?? "-"} °F
-                        </div>
-                        <div>
-                          SpO2: {v.spo2 == null ? "-" : `${v.spo2}%`} | Respiratory Rate: {v.respiratory_rate == null ? "-" : `${v.respiratory_rate} breaths/min`}
-                        </div>
+                      <div key={`vital-${i}`} className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-xs text-slate-500">BP</span><span className="text-white">{v.systolic_bp ?? "-"} / {v.diastolic_bp ?? "-"}</span></div>
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-xs text-slate-500">Temp</span><span className="text-white">{v.temperature_f ?? "-"} °F</span></div>
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-xs text-slate-500">SpO2</span><span className="text-emerald-400 font-medium">{v.spo2 == null ? "-" : `${v.spo2}%`}</span></div>
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-xs text-slate-500">Resp Rate</span><span className="text-blue-300">{v.respiratory_rate ?? "-"}</span></div>
                       </div>
                     ))}
                     {reviewData.spirometry.map((s, i) => (
-                      <div key={`spiro-${i}`}>
-                        FVC: {s.fvc == null ? "-" : `${s.fvc} L`} | FEV1: {s.fev1 == null ? "-" : `${s.fev1} L`} | FEV1/FVC: {s.fev1_fvc == null ? "-" : `${s.fev1_fvc}%`} | FEV1/FEV6: {s.fev1_fev6 == null ? "-" : `${s.fev1_fev6}%`} | PEF: {s.pef == null ? "-" : `${s.pef} L/min`}
+                      <div key={`spiro-${i}`} className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2 pt-2 border-t border-white/10">
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-[10px] text-slate-500">FVC</span><span className="text-white text-xs">{s.fvc == null ? "-" : `${s.fvc}L`}</span></div>
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-[10px] text-slate-500">FEV1</span><span className="text-white text-xs">{s.fev1 == null ? "-" : `${s.fev1}L`}</span></div>
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-[10px] text-slate-500">FEV1/FVC</span><span className="text-white text-xs">{s.fev1_fvc == null ? "-" : `${s.fev1_fvc}%`}</span></div>
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-[10px] text-slate-500">FEV1/FEV6</span><span className="text-white text-xs">{s.fev1_fev6 == null ? "-" : `${s.fev1_fev6}%`}</span></div>
+                        <div className="rounded bg-white/5 p-2 border border-white/5"><span className="block text-[10px] text-slate-500">PEF</span><span className="text-white text-xs">{s.pef == null ? "-" : `${s.pef}L/m`}</span></div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-6">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Rural Doctor Diagnosis</h3>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{reviewData.ruralDiagnosis ?? "-"}</p>
+                <div className="glass-panel p-6 border-l-4 border-indigo-500">
+                  <h3 className="medical-caption text-indigo-400 mb-2">Originating Doctor Assessment</h3>
+                  <p className="text-sm text-slate-300 whitespace-pre-wrap italic bg-black/20 p-4 rounded-lg">"{reviewData.ruralDiagnosis ?? "No assessment provided"}"</p>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="bg-white/70 backdrop-blur-md border border-gray-200 rounded-2xl shadow-sm p-4">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-2">X-Ray Viewer</h3>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-gray-800 truncate">
-                      File: {reviewData.xrayPaths[0] ? reviewData.xrayPaths[0].split("/").pop() : "-"}
+              <div className="space-y-6">
+                <div className="glass-panel p-6 bg-gradient-to-br from-blue-900/30 to-black/30">
+                  <h3 className="medical-caption text-blue-300 mb-4">Radiological Assets</h3>
+                  <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-black/40 border border-white/10">
+                    <p className="text-sm font-mono text-slate-400 truncate flex-1">
+                      {reviewData.xrayPaths[0] ? `[DICOM] ${reviewData.xrayPaths[0].split("/").pop()}` : "No DICOM assigned"}
                     </p>
                     <button
                       type="button"
                       onClick={() => reviewData.xrayPaths[0] && openXrayModal(reviewData.xrayPaths[0])}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 shadow"
+                      className="glass-btn-primary py-2 px-6 shadow-[0_0_15px_rgba(37,99,235,0.3)]"
+                      disabled={!reviewData.xrayPaths[0]}
                     >
-                      View X-Ray
+                      Initialize Viewer
                     </button>
                   </div>
                 </div>
-
               </div>
             </div>
 
@@ -1715,14 +1773,14 @@ export default function SpecialistDashboardPage() {
               </div>
             </div>
 
-            <div className="mt-12 flex justify-center">
+            <div className="mt-16 pt-8 border-t border-white/10 flex justify-center pb-12">
               <button
                 type="button"
                 onClick={handleFinishCase}
                 disabled={finishing}
-                className="rounded-lg bg-blue-600 px-6 py-3 text-white transition hover:bg-blue-500 disabled:opacity-50"
+                className="glass-btn-primary w-full max-w-md py-4 text-lg font-bold shadow-[0_0_30px_rgba(37,99,235,0.5)] tracking-widest disabled:opacity-50"
               >
-                {finishing ? "Finishing..." : "Finish"}
+                {finishing ? "Finalizing Package..." : "FINALIZE PROTOCOL"}
               </button>
             </div>
 
@@ -1738,7 +1796,7 @@ export default function SpecialistDashboardPage() {
       ) : null}
 
       {viewState === "past" && viewingPastCaseData ? (
-        <div className="space-y-6 max-w-6xl mx-auto">
+        <div className="space-y-6 max-w-7xl mx-auto animate-in slide-in-from-bottom-4 duration-700 pb-12">
           <button
             type="button"
             onClick={() => {
@@ -1746,105 +1804,116 @@ export default function SpecialistDashboardPage() {
               viewingPastCaseIdRef.current = null;
               setViewState("past");
             }}
-            className="text-sm text-slate-600 hover:text-slate-800"
+            className="glass-btn-secondary mb-4"
           >
-            Back to Past Cases
+            ← Back to Archive
           </button>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div className="col-span-1 rounded-xl border bg-white p-6 shadow-sm md:col-span-2">
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">Patient Summary</h2>
-              <h1 className="text-2xl font-semibold">{viewingPastCaseData.patient?.name ?? "Patient"}</h1>
-              <p className="mt-1 text-gray-800">Patient ID: {viewingPastCaseData.patient?.generated_patient_id ?? "Not Provided"}</p>
-              <div className="mt-3">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="glass-panel p-8 lg:col-span-2 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8">
                 <span
-                  className={`rounded-full px-3 py-1 text-sm font-medium ${
-                    viewingPastCaseData.case_status === "finalized" ? "bg-green-100 text-green-600" : "bg-blue-100 text-blue-600"
+                  className={`rounded-full px-5 py-2 text-sm font-bold tracking-widest uppercase shadow-xl ${
+                    viewingPastCaseData.case_status === "finalized" ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]" : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                   }`}
                 >
-                  {viewingPastCaseData.case_status === "finalized" ? "Completed Case" : "In Progress Case"}
+                  {viewingPastCaseData.case_status === "finalized" ? "Archived // Finalized" : "Active Assessment"}
                 </span>
               </div>
-              <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div className="rounded-xl border bg-white p-6 shadow-sm">
-                  <h3 className="mb-4 text-lg text-black font-semibold">Patient Information</h3>
-                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Name:</span> {viewingPastCaseData.patient?.name ?? "Not Provided"}</p>
-                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Patient ID:</span> {viewingPastCaseData.patient?.generated_patient_id ?? "Not Provided"}</p>
-                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Age:</span> {viewingPastCaseData.patient?.age ?? "Not Provided"}</p>
-                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Gender:</span> {viewingPastCaseData.patient?.gender ?? "Not Provided"}</p>
-                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Height:</span> {viewingPastCaseData.patient?.height_cm ?? "Not Provided"} cm</p>
-                  <p className="text-gray-800"><span className="text-gray-500 font-medium">Weight:</span> {viewingPastCaseData.patient?.weight_kg ?? "Not Provided"} kg</p>
+              <h2 className="medical-caption text-blue-400 mb-2">Patient Overview</h2>
+              <h1 className="medical-h1">{viewingPastCaseData.patient?.name ?? "Unknown Patient"}</h1>
+              <p className="mt-1 text-slate-400 font-mono text-sm tracking-wider">ID: {viewingPastCaseData.patient?.generated_patient_id ?? "Not Provided"}</p>
+              
+              <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-white/5 bg-black/20 p-5">
+                  <span className="text-slate-500 block text-xs mb-1 uppercase tracking-wider font-bold">Age</span>
+                  <span className="text-white text-lg">{viewingPastCaseData.patient?.age ?? "-"}</span>
                 </div>
-                <div className="rounded-xl border bg-white p-6 shadow-sm">
-                  <h3 className="mb-4 text-lg font-semibold text-gray-900">Clinical History</h3>
-                  <p className="leading-relaxed text-gray-800">{viewingPastCaseData.patient?.smoking_history ?? "Not Provided"}</p>
+                <div className="rounded-xl border border-white/5 bg-black/20 p-5">
+                  <span className="text-slate-500 block text-xs mb-1 uppercase tracking-wider font-bold">Gender</span>
+                  <span className="text-white text-lg capitalize">{viewingPastCaseData.patient?.gender ?? "-"}</span>
                 </div>
+                <div className="rounded-xl border border-white/5 bg-black/20 p-5">
+                  <span className="text-slate-500 block text-xs mb-1 uppercase tracking-wider font-bold">Height</span>
+                  <span className="text-white text-lg">{viewingPastCaseData.patient?.height_cm ?? "-"} cm</span>
+                </div>
+                <div className="rounded-xl border border-white/5 bg-black/20 p-5">
+                  <span className="text-slate-500 block text-xs mb-1 uppercase tracking-wider font-bold">Weight</span>
+                  <span className="text-white text-lg">{viewingPastCaseData.patient?.weight_kg ?? "-"} kg</span>
+                </div>
+              </div>
+              
+              <div className="mt-6 rounded-xl border border-white/5 bg-black/20 p-6">
+                <h3 className="medical-caption text-blue-300 mb-3 block">Clinical Context</h3>
+                <p className="leading-relaxed text-slate-300 opacity-90">{viewingPastCaseData.patient?.smoking_history ?? "No history recorded."}</p>
               </div>
             </div>
 
-            <div className="col-span-1 rounded-xl border bg-white p-6 shadow-sm md:col-span-2">
-              <h2 className="mb-4 text-lg font-semibold text-gray-900">Clinical Vitals</h2>
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">BP</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {viewingPastCaseData.vitals?.systolic_bp ?? "-"} / {viewingPastCaseData.vitals?.diastolic_bp ?? "-"} mmHg
+            <div className="glass-panel p-6 lg:col-span-2">
+              <h2 className="medical-caption text-blue-400 mb-6">Physiological Telemetry</h2>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-9">
+                <div className="rounded-lg bg-black/30 border border-white/5 p-4 text-center flex flex-col justify-between">
+                  <p className="text-xs text-slate-500 font-bold mb-2">BP</p>
+                  <p className="text-sm lg:text-lg font-bold text-white tracking-wider">
+                    {viewingPastCaseData.vitals?.systolic_bp ?? "-"} / {viewingPastCaseData.vitals?.diastolic_bp ?? "-"}
                   </p>
                 </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">Temperature</p>
-                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.vitals?.temperature_f ?? "-"} °F</p>
+                <div className="rounded-lg bg-black/30 border border-white/5 p-4 text-center flex flex-col justify-between">
+                  <p className="text-xs text-slate-500 font-bold mb-2">Temp</p>
+                  <p className="text-sm lg:text-lg font-bold text-white tracking-wider">{viewingPastCaseData.vitals?.temperature_f ?? "-"} °F</p>
                 </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">SpO2</p>
-                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.vitals?.spo2 == null ? "—" : `${viewingPastCaseData.vitals.spo2}%`}</p>
+                <div className="rounded-lg bg-emerald-950/20 border border-emerald-500/20 p-4 text-center flex flex-col justify-between">
+                  <p className="text-xs text-emerald-500/70 font-bold mb-2">SpO2</p>
+                  <p className="text-sm lg:text-lg font-bold text-emerald-400 tracking-wider shadow-emerald-500/20 drop-shadow-md">{viewingPastCaseData.vitals?.spo2 == null ? "—" : `${viewingPastCaseData.vitals.spo2}%`}</p>
                 </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">Resp Rate</p>
-                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.vitals?.respiratory_rate == null ? "—" : viewingPastCaseData.vitals.respiratory_rate}</p>
+                <div className="rounded-lg bg-blue-950/20 border border-blue-500/20 p-4 text-center flex flex-col justify-between">
+                  <p className="text-xs text-blue-500/70 font-bold mb-2">Resp</p>
+                  <p className="text-sm lg:text-lg font-bold text-blue-400 tracking-wider">{viewingPastCaseData.vitals?.respiratory_rate == null ? "—" : viewingPastCaseData.vitals.respiratory_rate}</p>
                 </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">FVC</p>
-                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.fvc == null ? "—" : `${viewingPastCaseData.spirometry.fvc} L`}</p>
+                <div className="rounded-lg bg-black/30 border border-white/5 p-4 text-center flex flex-col justify-between transition hover:bg-white/5">
+                  <p className="text-[10px] text-slate-500 font-bold mb-2">FVC</p>
+                  <p className="text-sm lg:text-base font-bold text-white tracking-wider">{viewingPastCaseData.spirometry?.fvc == null ? "—" : `${viewingPastCaseData.spirometry.fvc}L`}</p>
                 </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">FEV1</p>
-                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.fev1 == null ? "—" : `${viewingPastCaseData.spirometry.fev1} L`}</p>
+                <div className="rounded-lg bg-black/30 border border-white/5 p-4 text-center flex flex-col justify-between transition hover:bg-white/5">
+                  <p className="text-[10px] text-slate-500 font-bold mb-2">FEV1</p>
+                  <p className="text-sm lg:text-base font-bold text-white tracking-wider">{viewingPastCaseData.spirometry?.fev1 == null ? "—" : `${viewingPastCaseData.spirometry.fev1}L`}</p>
                 </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">FEV1/FVC</p>
-                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.fev1_fvc == null ? "—" : `${viewingPastCaseData.spirometry.fev1_fvc}%`}</p>
+                <div className="rounded-lg bg-black/30 border border-white/5 p-4 text-center flex flex-col justify-between transition hover:bg-white/5">
+                  <p className="text-[10px] text-slate-500 font-bold mb-2">FEV1/FVC</p>
+                  <p className="text-sm lg:text-base font-bold text-white tracking-wider">{viewingPastCaseData.spirometry?.fev1_fvc == null ? "—" : `${viewingPastCaseData.spirometry.fev1_fvc}%`}</p>
                 </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">FEV1/FEV6</p>
-                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.fev1_fev6 == null ? "—" : `${viewingPastCaseData.spirometry.fev1_fev6}%`}</p>
+                <div className="rounded-lg bg-black/30 border border-white/5 p-4 text-center flex flex-col justify-between transition hover:bg-white/5">
+                  <p className="text-[10px] text-slate-500 font-bold mb-2">FEV1/FEV6</p>
+                  <p className="text-sm lg:text-base font-bold text-white tracking-wider">{viewingPastCaseData.spirometry?.fev1_fev6 == null ? "—" : `${viewingPastCaseData.spirometry.fev1_fev6}%`}</p>
                 </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-center">
-                  <p className="text-xs text-gray-800">PEF</p>
-                  <p className="text-lg font-semibold text-gray-900">{viewingPastCaseData.spirometry?.pef == null ? "—" : `${viewingPastCaseData.spirometry.pef} L/min`}</p>
+                <div className="rounded-lg bg-black/30 border border-white/5 p-4 text-center flex flex-col justify-between transition hover:bg-white/5">
+                  <p className="text-[10px] text-slate-500 font-bold mb-2">PEF</p>
+                  <p className="text-sm lg:text-base font-bold text-white tracking-wider">{viewingPastCaseData.spirometry?.pef == null ? "—" : `${viewingPastCaseData.spirometry.pef}L/m`}</p>
                 </div>
               </div>
             </div>
 
-            <div className="col-span-1 rounded-xl border border-blue-200 bg-blue-50 border border-blue-200 p-6 md:col-span-2">
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">Rural Diagnosis</h2>
-              <p className="leading-relaxed text-gray-800">{viewingPastCaseData.rural_diagnosis ?? "Not Provided"}</p>
+            <div className="glass-panel p-6 border-l-4 border-indigo-500/50 bg-gradient-to-br from-indigo-900/10 to-transparent">
+              <h2 className="medical-caption text-indigo-400 mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-400"></div> Originating Assessment</h2>
+              <div className="rounded-xl bg-black/20 p-5 italic border border-white/5 relative">
+                <span className="absolute top-2 left-2 text-4xl text-indigo-500/20 font-serif leading-none">"</span>
+                <p className="leading-relaxed text-slate-300 relative z-10 pl-4">{viewingPastCaseData.rural_diagnosis ?? "Not Provided"}</p>
+              </div>
             </div>
 
-            <div className="col-span-1 rounded-xl border border-green-200 bg-green-50 border border-green-200 p-6 md:col-span-2">
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">Specialist Diagnosis</h2>
-              <div className="space-y-2 text-gray-800">
-                <p><strong>Primary Diagnosis:</strong> {viewingPastCaseData.diagnosis?.diagnosis_name ?? "Not Provided"}</p>
-                <p><strong>Severity:</strong> {viewingPastCaseData.diagnosis?.severity ?? "Not Provided"}</p>
-                <p><strong>Specialist:</strong> {viewingPastCaseData.specialist_name ?? "Not Provided"}</p>
-                <p><strong>Diagnosis Timestamp:</strong> {viewingPastCaseData.diagnosis?.created_at ?? "Not Provided"}</p>
-                <p><strong>Clinical Notes:</strong> {viewingPastCaseData.diagnosis?.specialist_notes ?? "Not Provided"}</p>
+            <div className="glass-panel p-6 border-l-4 border-emerald-500/50 bg-gradient-to-br from-emerald-900/10 to-transparent">
+              <h2 className="medical-caption text-emerald-400 mb-4 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-400"></div> Specialist Protocol</h2>
+              <div className="space-y-4 text-sm text-slate-300 bg-black/20 p-5 rounded-xl border border-white/5">
+                <div className="grid grid-cols-[140px_1fr] items-start border-b border-white/5 pb-2"><span className="text-slate-500 font-medium">Primary Condition:</span> <span className="font-bold text-white">{viewingPastCaseData.diagnosis?.diagnosis_name ?? "Not Provided"}</span></div>
+                <div className="grid grid-cols-[140px_1fr] items-center border-b border-white/5 pb-2"><span className="text-slate-500 font-medium">Severity Logic:</span> <span className="text-amber-400 font-medium">{viewingPastCaseData.diagnosis?.severity ?? "Not Provided"}</span></div>
+                <div className="grid grid-cols-[140px_1fr] items-center border-b border-white/5 pb-2"><span className="text-slate-500 font-medium">Evaluating Specialist:</span> <span>Dr. {viewingPastCaseData.specialist_name ?? "Not Provided"}</span></div>
+                <div className="grid grid-cols-[140px_1fr] items-start"><span className="text-slate-500 font-medium">Clinical Thesis:</span> <span className="italic">"{viewingPastCaseData.diagnosis?.specialist_notes ?? "Not Provided"}"</span></div>
               </div>
             </div>
 
             {(viewingPastCaseData.case_status === "completed" || viewingPastCaseData.case_status === "finalized") && (
               <>
-                <div className="col-span-1 md:col-span-2">
+                <div className="lg:col-span-2 mt-4 space-y-6">
                   <TreatmentViewer
                     medications={viewingPastCaseData.treatment?.medications ?? null}
                     inhalerTherapy={viewingPastCaseData.treatment?.inhaler_therapy ?? null}
@@ -1859,30 +1928,35 @@ export default function SpecialistDashboardPage() {
                     lifestyleAdvice={viewingPastCaseData.treatment?.lifestyle_recommendations ?? null}
                     referralNotes={viewingPastCaseData.treatment?.referral_recommendation ?? null}
                   />
-                </div>
-                <div className="col-span-1 md:col-span-2">
                   <PrescriptionViewer rows={viewingPastCaseData.prescriptions ?? []} />
-                </div>
-                <div className="rounded-xl border bg-white p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-900">Recommended Further Investigations</h3>
-                  {(viewingPastCaseData.followup?.diagnostic_procedures?.length ?? 0) === 0 ? (
-                    <p className="text-sm text-gray-800">Not Provided</p>
-                  ) : (
-                    <ol className="list-decimal ml-5 text-sm text-gray-800 space-y-1">
-                      {(viewingPastCaseData.followup?.diagnostic_procedures ?? []).map((test, idx) => (
-                        <li key={idx}>{test}</li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-                <div className="col-span-1 md:col-span-2 space-y-4">
-                  <FollowupTracker nextFollowupDate={viewingPastCaseData.followup?.scheduled_date ?? null} />
-                  <div className="rounded-xl border bg-white p-6 shadow-sm">
-                    <h3 className="text-lg font-semibold text-gray-900">Notes</h3>
-                    <p className="mt-2 whitespace-pre-wrap text-gray-800">{viewingPastCaseData.followup?.notes ?? "Not Provided"}</p>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="glass-panel p-6">
+                      <h3 className="medical-caption text-blue-400 mb-4 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Pending Further Investigations</h3>
+                      <div className="bg-black/20 border border-white/5 rounded-xl p-5">
+                      {(viewingPastCaseData.followup?.diagnostic_procedures?.length ?? 0) === 0 ? (
+                        <p className="text-sm text-slate-500 italic">No further diagnostic protocol attached.</p>
+                      ) : (
+                        <ol className="list-decimal ml-5 text-sm text-slate-300 space-y-2 marker:text-blue-500">
+                          {(viewingPastCaseData.followup?.diagnostic_procedures ?? []).map((test, idx) => (
+                            <li key={idx} className="pl-1">{test}</li>
+                          ))}
+                        </ol>
+                      )}
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-6">
+                      <FollowupTracker nextFollowupDate={viewingPastCaseData.followup?.scheduled_date ?? null} />
+                      <div className="glass-panel p-6">
+                        <h3 className="medical-caption text-blue-400 mb-4 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div> Consultation Directives</h3>
+                        <div className="bg-black/20 border border-white/5 rounded-xl p-5">
+                          <p className="whitespace-pre-wrap text-sm text-slate-300">{viewingPastCaseData.followup?.notes ?? "Not Provided"}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="col-span-1 md:col-span-2">
+                  
                   <CaseTimeline
                     caseId={viewingPastCaseIdRef.current}
                     timestamps={{
@@ -1898,9 +1972,14 @@ export default function SpecialistDashboardPage() {
               </>
             )}
 
-            <div className="col-span-1 rounded-xl border bg-white p-6 shadow-sm md:col-span-2">
-              <h3 className="text-lg font-semibold text-gray-900">X-ray Viewer</h3>
-              {viewingPastCaseData.xrays && viewingPastCaseData.xrays.length > 0 ? (
+            <div className="glass-panel p-6 lg:col-span-2 flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-blue-500">
+              <div>
+                <h3 className="medical-caption text-blue-400 mb-1">Radiological Archive</h3>
+                <p className="text-sm font-mono text-slate-400">
+                  {viewingPastCaseData.xrays && viewingPastCaseData.xrays.length > 0 ? `[DICOM DATA STREAM] ${viewingPastCaseData.xrays[0].path.split("/").pop()}` : "[NO IMAGING ATTACHED]"}
+                </p>
+              </div>
+              {viewingPastCaseData.xrays && viewingPastCaseData.xrays.length > 0 && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1908,12 +1987,10 @@ export default function SpecialistDashboardPage() {
                     setXrayPath(viewingPastCaseData.xrays?.[0]?.path ?? null);
                     setShowXrayModal(true);
                   }}
-                  className="mt-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+                  className="glass-btn-primary py-2 px-6 shadow-[0_0_15px_rgba(37,99,235,0.3)]"
                 >
-                  View X-ray
+                  Initialize Viewer
                 </button>
-              ) : (
-                <p className="mt-2 text-gray-800">Not Provided</p>
               )}
             </div>
           </div>
@@ -1924,13 +2001,14 @@ export default function SpecialistDashboardPage() {
         isOpen={showXrayModal}
         xrayUrl={xrayUrl}
         xrayPath={xrayPath}
+        allowAnnotation
         onClose={() => {
           setShowXrayModal(false);
           setXrayUrl(null);
           setXrayPath(null);
         }}
       />
-      </div>
+      </main>
     </div>
   );
 }

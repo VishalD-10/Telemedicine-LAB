@@ -19,7 +19,7 @@ export default function PageTransition({ children }: PageTransitionProps) {
   const themeClass = getThemeClass(pathname);
 
   return (
-    <div key={pathname} className={`page-transition-shell ${themeClass}`}>
+    <div key={pathname} className={`page-transition-shell ${themeClass}`} data-theme="light">
       <div className="page-transition-content">{children}</div>
     </div>
   );

@@ -65,9 +65,9 @@ export default function CaseTimeline({ caseId, timestamps, title = "Case Timelin
   const lastDoneIndex = nodes.map((n) => n.done).lastIndexOf(true);
 
   return (
-    <section className="rounded-2xl border border-white/50 bg-gradient-to-br from-white/80 to-blue-100/50 p-5 shadow-md backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
+    <section className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-blue-50/80 p-5 text-slate-900 shadow-md backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-base font-semibold text-slate-800">{title}</h3>
+        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
         <span className="text-xs text-slate-500">{caseId ? `Case ${caseId.slice(0, 8)}` : "Case"}</span>
       </div>
 
@@ -89,9 +89,9 @@ export default function CaseTimeline({ caseId, timestamps, title = "Case Timelin
                 />
                 {index !== nodes.length - 1 ? <span className="mt-1 h-7 w-px bg-slate-300/80" /> : null}
               </div>
-              <div className="rounded-lg bg-white/70 px-3 py-2 transition-all duration-300 group-hover:bg-white/90">
-                <p className={`text-sm font-medium ${node.done ? "text-slate-800" : "text-slate-500"}`}>{node.label}</p>
-                <p className={`text-xs ${node.done ? "text-slate-600" : "text-slate-400"}`}>
+              <div className="rounded-lg bg-white/80 px-3 py-2 transition-all duration-300 group-hover:bg-white">
+                <p className={`text-sm font-medium ${node.done ? "text-slate-900" : "text-slate-500"}`}>{node.label}</p>
+                <p className={`text-xs ${node.done ? "text-slate-600" : "text-slate-500"}`}>
                   {at ? new Date(at).toLocaleString() : "Pending"}
                 </p>
               </div>

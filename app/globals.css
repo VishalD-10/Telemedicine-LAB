@@ -2,13 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html {
+    font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+
+  :root {
+    color-scheme: light;
+  }
+}
+
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  @apply antialiased bg-slate-50 text-slate-900;
   scroll-behavior: smooth;
 }
 
+/* Custom Webkit Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.16);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.34);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(37, 99, 235, 0.42);
+}
+
 a {
-  @apply text-primary underline-offset-4 hover:underline;
+  @apply text-blue-700 underline-offset-4 hover:underline;
 }
 
 input,
@@ -18,16 +44,180 @@ textarea {
   @apply outline-none;
 }
 
+/* 2026 Glassmorphism Utilities */
+.glass-panel {
+  @apply rounded-2xl border border-slate-200/80 bg-white/85 text-slate-900 backdrop-blur-[24px] shadow-sm transition-all duration-300;
+}
+
+.glass-panel:hover {
+  @apply border-slate-300/80 bg-white shadow-md;
+}
+
+.glass-input {
+  @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 backdrop-blur-md outline-none transition duration-300;
+}
+.glass-input:focus {
+  @apply border-blue-500/50 bg-white ring-4 ring-blue-500/10;
+}
+.glass-input::placeholder {
+  @apply text-slate-400;
+}
+.glass-input:disabled {
+  @apply opacity-50 cursor-not-allowed;
+}
+.glass-input:not(:disabled):hover {
+  @apply border-slate-300 bg-white;
+}
+
+.glass-btn {
+  @apply px-5 py-2.5 rounded-xl font-medium transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2;
+}
+.glass-btn-primary {
+  @apply glass-btn border border-blue-500/40 bg-blue-600/90 text-white backdrop-blur-xl shadow-[0_0_15px_rgba(37,99,235,0.2)] hover:bg-blue-500 hover:shadow-[0_0_25px_rgba(37,99,235,0.4)];
+}
+.glass-btn-secondary {
+  @apply glass-btn border border-slate-200 bg-white/80 text-slate-700 backdrop-blur-xl shadow-sm hover:bg-white hover:border-slate-300;
+}
+.glass-btn-danger {
+  @apply glass-btn border border-red-500/40 bg-red-600/90 text-white backdrop-blur-xl shadow-[0_0_15px_rgba(220,38,38,0.2)] hover:bg-red-500 hover:shadow-[0_0_25px_rgba(220,38,38,0.4)];
+}
+
+/* Animated Mesh Backgrounds for specific themes */
+.page-transition-shell {
+  position: relative;
+  min-height: 100vh;
+  width: 100vw;
+  overflow-x: hidden;
+  background-color: transparent;
+  color: #0f172a;
+}
+
+/* Base animated mesh layer (Light Theme by default) */
+.page-transition-shell::before {
+  content: "";
+  position: fixed;
+  inset: -50%;
+  width: 200%;
+  height: 200%;
+  z-index: -2;
+  pointer-events: none;
+  background-size: 200% 200%;
+  animation: mesh-rotate 40s linear infinite;
+  background-image:
+    radial-gradient(at 0% 0%, rgba(191, 219, 254, 0.42) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(219, 234, 254, 0.44) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(248, 250, 252, 0.92) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(224, 242, 254, 0.38) 0px, transparent 50%);
+}
+
+.dark .page-transition-shell::before {
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(14, 165, 233, 0.1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(2, 6, 23, 0.9) 0px, transparent 50%),
+    radial-gradient(at 0% 100%, rgba(30, 58, 138, 0.1) 0px, transparent 50%);
+}
+
+@keyframes mesh-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.theme-specialist::before {
+  background: 
+    radial-gradient(ellipse at center, rgba(37, 99, 235, 0.15) 0%, transparent 40%),
+    radial-gradient(ellipse at bottom left, rgba(147, 197, 253, 0.08) 0%, transparent 45%),
+    radial-gradient(ellipse at top right, rgba(59, 130, 246, 0.12) 0%, transparent 40%);
+}
+
+.theme-rural::before {
+  background: 
+    radial-gradient(ellipse at bottom right, rgba(14, 165, 233, 0.15) 0%, transparent 40%),
+    radial-gradient(ellipse at top left, rgba(56, 189, 248, 0.08) 0%, transparent 45%),
+    radial-gradient(ellipse at center, rgba(37, 99, 235, 0.1) 0%, transparent 35%);
+}
+
+.theme-patient::before {
+  background: 
+    radial-gradient(ellipse at center, rgba(168, 85, 247, 0.1) 0%, transparent 40%),
+    radial-gradient(ellipse at bottom, rgba(79, 70, 229, 0.12) 0%, transparent 45%),
+    radial-gradient(ellipse at top right, rgba(99, 102, 241, 0.08) 0%, transparent 40%);
+}
+
+/* Soft secondary grid lines (glass structural aesthetic) */
+.page-transition-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(circle at center, black 40%, transparent 90%);
+}
+
+.page-transition-shell[data-theme="light"] {
+  color: #0f172a;
+}
+
+.page-transition-shell[data-theme="light"] :is(.glass-panel, .medical-glass-card, .medical-loader, .medical-modal, [class*="bg-black/20"], [class*="bg-black/30"], [class*="bg-black/40"], [class*="bg-white/5"], [class*="bg-white/10"], [class*="bg-white/55"], [class*="bg-white/60"], [class*="bg-white/70"], [class*="bg-white/80"], [class*="bg-white/90"]) {
+  background-color: rgba(255, 255, 255, 0.84) !important;
+  border-color: rgba(203, 213, 225, 0.92) !important;
+  color: #0f172a;
+}
+
+.page-transition-shell[data-theme="light"] :is(.glass-panel, .medical-glass-card, .medical-loader, .medical-modal, [class*="bg-black/20"], [class*="bg-black/30"], [class*="bg-black/40"], [class*="bg-white/5"], [class*="bg-white/10"], [class*="bg-white/55"], [class*="bg-white/60"], [class*="bg-white/70"], [class*="bg-white/80"], [class*="bg-white/90"]) :is(.text-white, .text-slate-100, .text-slate-200, .text-slate-300, .text-slate-400) {
+  color: #0f172a !important;
+}
+
+.page-transition-shell[data-theme="light"] :is(.glass-panel, .medical-glass-card, .medical-loader, .medical-modal, [class*="bg-black/20"], [class*="bg-black/30"], [class*="bg-black/40"], [class*="bg-white/5"], [class*="bg-white/10"], [class*="bg-white/55"], [class*="bg-white/60"], [class*="bg-white/70"], [class*="bg-white/80"], [class*="bg-white/90"]) :is(.text-blue-100, .text-blue-200, .text-blue-300, .text-emerald-100, .text-emerald-200, .text-emerald-300, .text-cyan-100, .text-cyan-200, .text-cyan-300, .text-purple-100, .text-purple-200, .text-purple-300, .text-amber-100, .text-amber-200, .text-amber-300, .text-red-100, .text-red-200, .text-red-300, .text-yellow-300) {
+  color: #334155 !important;
+}
+
+.page-transition-shell[data-theme="light"] :is(.glass-panel, .medical-glass-card, .medical-loader, .medical-modal, [class*="bg-black/20"], [class*="bg-black/30"], [class*="bg-black/40"], [class*="bg-white/5"], [class*="bg-white/10"], [class*="bg-white/55"], [class*="bg-white/60"], [class*="bg-white/70"], [class*="bg-white/80"], [class*="bg-white/90"]) :is([class*="border-white/5"], [class*="border-white/10"], [class*="border-white/20"], [class*="border-white/40"], [class*="border-white/50"]) {
+  border-color: rgba(203, 213, 225, 0.84) !important;
+}
+
+.page-transition-content {
+  animation: page-enter 600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.995);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+/* Typography styles */
+.medical-h1 {
+  @apply text-3xl md:text-4xl font-semibold tracking-tight text-slate-900 mb-2;
+}
+
+.medical-h2 {
+  @apply text-xl md:text-2xl font-medium text-slate-700 mb-1;
+}
+
+.medical-body {
+  @apply text-sm md:text-base leading-relaxed text-slate-600;
+}
+
+.medical-caption {
+  @apply text-xs text-slate-600 font-medium uppercase tracking-wider;
+}
+
+/* Animations */
 @keyframes float {
-  0% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-  100% {
-    transform: translateY(0px);
-  }
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(0.5deg); }
 }
 
 .animate-float {
@@ -35,207 +225,19 @@ textarea {
 }
 
 @keyframes float-slow {
-  0% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-12px);
-  }
-  100% {
-    transform: translateY(0);
-  }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
 }
 
 .animate-float-slow {
-  animation: float-slow 5s ease-in-out infinite;
+  animation: float-slow 8s ease-in-out infinite;
 }
 
-.animate-float-slower {
-  animation: float-slow 6s ease-in-out infinite;
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.05); }
 }
 
-.logout-btn {
-  background: rgba(255, 60, 60, 0.12);
-  color: #ff4b4b;
-  border: 1px solid rgba(255, 60, 60, 0.25);
-  padding: 10px 22px;
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  transition: all 0.2s ease;
-}
-
-.logout-btn:hover {
-  background: rgba(255, 60, 60, 0.22);
-}
-
-.new-case-glass .text-slate-100,
-.new-case-glass .text-slate-200,
-.new-case-glass .text-slate-300,
-.new-case-glass .text-slate-400 {
-  color: #334155;
-}
-
-.page-transition-shell {
-  position: relative;
-  min-height: 100vh;
-  overflow: hidden;
-}
-
-.page-transition-shell::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  pointer-events: none;
-  background: linear-gradient(145deg, #e2e8f0, #f8fafc);
-}
-
-.page-transition-shell::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 8% 12%, rgba(255, 255, 255, 0.6), transparent 38%),
-    radial-gradient(circle at 92% 16%, rgba(191, 219, 254, 0.45), transparent 36%),
-    radial-gradient(circle at 50% 84%, rgba(125, 211, 252, 0.22), transparent 42%);
-}
-
-.theme-specialist::before {
-  background: linear-gradient(150deg, #0f172a 0%, #1d4ed8 48%, #2563eb 100%);
-}
-
-.theme-rural::before {
-  background: linear-gradient(150deg, #ecfeff 0%, #bae6fd 45%, #93c5fd 100%);
-}
-
-.theme-patient::before {
-  background: linear-gradient(160deg, #ffffff 0%, #eff6ff 42%, #dbeafe 100%);
-}
-
-.page-transition-content {
-  animation: page-enter 380ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes page-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.992);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-h1,
-.medical-h1 {
-  @apply text-2xl md:text-3xl font-semibold tracking-tight text-slate-800;
-}
-
-h2,
-.medical-h2 {
-  @apply text-lg md:text-xl font-semibold text-slate-700;
-}
-
-.medical-body {
-  @apply text-sm md:text-base leading-relaxed text-slate-700;
-}
-
-.medical-caption {
-  @apply text-xs text-slate-500;
-}
-
-.medical-glass-card {
-  position: relative;
-  overflow: hidden;
-  transform-style: preserve-3d;
-  transition: transform 240ms ease, box-shadow 240ms ease;
-}
-
-.medical-glass-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(130deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.1));
-}
-
-.medical-glass-card:hover {
-  transform: translateY(-2px) perspective(900px) rotateX(0.8deg) rotateY(-0.8deg);
-  box-shadow: 0 18px 36px -20px rgba(15, 23, 42, 0.45);
-}
-
-.medical-loader {
-  animation: breathe 2.8s ease-in-out infinite;
-}
-
-.medical-loader-skeleton {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(90deg, rgba(226, 232, 240, 0.95), rgba(241, 245, 249, 0.95));
-}
-
-.medical-loader-skeleton::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.82), transparent);
-  animation: shimmer 1.6s ease-in-out infinite;
-}
-
-@keyframes shimmer {
-  to {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 0.92;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-.medical-modal {
-  transform-origin: top center;
-}
-
-.page-transition-content :where(.shadow-sm, .shadow-md, .shadow-lg) {
-  transition: transform 220ms ease, box-shadow 220ms ease, background-color 220ms ease;
-}
-
-.page-transition-content :where(.shadow-sm, .shadow-md, .shadow-lg):hover {
-  transform: translateY(-1px);
-}
-
-button {
-  position: relative;
-  overflow: hidden;
-}
-
-button::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 0;
-  height: 0;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.22);
-  transform: translate(-50%, -50%);
-  transition: width 220ms ease, height 220ms ease, opacity 220ms ease;
-  opacity: 0;
-  pointer-events: none;
-}
-
-button:active::after {
-  width: 180px;
-  height: 180px;
-  opacity: 1;
+.animate-glow-pulse {
+  animation: glow-pulse 4s ease-in-out infinite;
 }

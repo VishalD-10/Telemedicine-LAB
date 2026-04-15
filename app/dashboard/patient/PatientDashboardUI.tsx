@@ -448,82 +448,85 @@ ${caseData?.specialist_diagnosis || ""}`,
   };
 
   return (
-    <div className="min-h-screen will-change-auto scroll-smooth bg-gradient-to-br from-blue-100 via-white to-blue-50 flex">
-      <div className="flex-1 p-8 md:p-10 overflow-x-hidden">
-        <div className="mx-auto max-w-7xl space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-white rounded-2xl shadow-md p-6">
+    <div className="min-h-screen w-full relative z-10 flex text-slate-900 animate-in fade-in-0 duration-500">
+      <div className="flex-1 p-6 md:p-10 overflow-x-hidden">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <div className="glass-panel p-6 flex flex-wrap items-center justify-between gap-5">
             <div>
-              <h1 className="text-2xl font-semibold text-gray-800">Patient Dashboard</h1>
-              <p className="mt-1 text-gray-600">Hello {patient?.name ?? "Patient"}</p>
+              <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-slate-900 mb-1">Patient Dashboard</h1>
+              <p className="text-base font-medium text-slate-600">Welcome, {patient?.name ?? "Patient"}</p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={() => setViewState("dashboard")}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                  viewState === "dashboard" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border border-gray-200"
-                }`}
+                className={viewState === "dashboard" ? "glass-btn-primary px-5 py-2" : "glass-btn-secondary px-5 py-2"}
               >
                 Dashboard
               </button>
               <button
                 type="button"
                 onClick={() => setViewState("pastCases")}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                  viewState === "pastCases" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border border-gray-200"
-                }`}
+                className={viewState === "pastCases" ? "glass-btn-primary px-5 py-2" : "glass-btn-secondary px-5 py-2"}
               >
                 Your History
               </button>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-400"
+                className="rounded-xl bg-red-100 px-5 py-2 text-sm font-medium text-red-700 border border-red-200 hover:bg-red-200 transition-all font-semibold"
               >
                 Logout
               </button>
             </div>
           </div>
 
-          {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+          {error && (
+            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 fade-in duration-300">
+              <div className="flex items-center gap-3 rounded-full border border-red-200 bg-red-50 px-6 py-3 text-sm font-bold tracking-wide text-red-700 shadow-sm backdrop-blur-md">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-700">!</span>
+                {error}
+              </div>
+            </div>
+          )}
 
           {viewState === "dashboard" && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <section className="bg-white rounded-2xl shadow-md p-6">
-                <h2 className="text-lg font-semibold text-gray-800">Patient Case Summary</h2>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-gray-200 bg-white p-4">
-                    <p className="text-xs text-gray-600">Patient ID</p>
-                    <p className="mt-1 text-sm font-medium text-gray-800">{patient?.generated_patient_id ?? "-"}</p>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <section className="glass-panel p-6 flex flex-col">
+                <h2 className="medical-caption text-blue-700 mb-5">Patient Case Summary</h2>
+                <div className="mt-2 grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-white/85 p-5 transition hover:bg-white">
+                    <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Patient ID</p>
+                    <p className="text-base font-bold text-slate-900 tracking-wide">{patient?.generated_patient_id ?? "-"}</p>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-4">
-                    <p className="text-xs text-gray-600">Case Status</p>
+                  <div className="rounded-xl border border-slate-200 bg-white/85 p-5 transition hover:bg-white">
+                    <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Case Status</p>
                     <span
-                      className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                      className={`inline-flex rounded-full px-3 py-1 mt-1 text-[11px] font-bold tracking-wide uppercase shadow-sm ${
                         selectedCase?.status === "pending"
-                          ? "bg-yellow-100 text-yellow-700"
+                          ? "bg-yellow-500/20 text-yellow-300 border border-yellow-500/30"
                           : selectedCase?.status === "accepted"
-                          ? "bg-blue-100 text-blue-700"
+                          ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                           : selectedCase?.status === "reviewing"
-                          ? "bg-blue-100 text-blue-700"
+                          ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
                           : selectedCase?.status === "completed"
-                          ? "bg-green-100 text-green-700"
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                           : selectedCase?.status === "finalized"
-                          ? "bg-emerald-200 text-emerald-800"
-                          : "bg-gray-100 text-gray-700"
+                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                          : "bg-slate-100 text-slate-700 border border-slate-200"
                       }`}
                     >
                       {selectedCase?.status ?? "N/A"}
                     </span>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-4">
-                    <p className="text-xs text-gray-600">Specialist Assigned</p>
-                    <p className="mt-1 text-sm font-medium text-gray-800">{specialistName}</p>
+                  <div className="rounded-xl border border-slate-200 bg-white/85 p-5 transition hover:bg-white">
+                    <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Specialist Assigned</p>
+                    <p className="text-base font-bold text-slate-900">{specialistName}</p>
                   </div>
-                  <div className="rounded-xl border border-gray-200 bg-white p-4">
-                    <p className="text-xs text-gray-600">Last Update</p>
-                    <p className="mt-1 text-sm font-medium text-gray-800">
+                  <div className="rounded-xl border border-slate-200 bg-white/85 p-5 transition hover:bg-white">
+                    <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Last Update</p>
+                    <p className="text-base font-medium text-slate-700">
                       {selectedCase?.reviewed_at
                         ? new Date(selectedCase.reviewed_at).toLocaleString()
                         : selectedCase?.created_at
@@ -534,50 +537,54 @@ ${caseData?.specialist_diagnosis || ""}`,
                 </div>
               </section>
 
-              <section className="bg-white rounded-2xl shadow-md p-6">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-gray-800">Your History</h2>
+              <section className="glass-panel p-6 flex flex-col">
+                <div className="mb-6 flex items-center justify-between gap-3 border-b border-white/5 pb-4">
+                  <h2 className="medical-caption text-emerald-400">Your History</h2>
                   <button
                     type="button"
                     onClick={() => setViewState("pastCases")}
-                    className="text-sm font-medium text-blue-600 hover:text-blue-500"
+                    className="text-xs font-bold uppercase tracking-wider text-blue-400 hover:text-blue-300 transition-colors"
                   >
-                    View all
+                    View all ➔
                   </button>
                 </div>
 
                 {caseList.length === 0 ? (
-                  <p className="text-sm text-gray-600">No past consultations available.</p>
+                  <div className="flex-1 flex flex-col items-center justify-center p-8">
+                    <p className="text-sm text-slate-500 italic">No past consultations available.</p>
+                  </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {caseList.slice(0, 4).map((caseItem, index) => (
                       <div
                         key={caseItem.id ?? `case-${index}`}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4"
+                        className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/5 bg-black/30 p-5 transition-all hover:bg-white/5 hover:border-white/10 group"
                       >
-                        <div>
-                          <p className="text-xs text-gray-600">Patient ID</p>
-                          <p className="text-sm font-medium text-gray-800">{patient?.generated_patient_id ?? "-"}</p>
+                        <div className="flex-1 min-w-[120px]">
+                          <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-1">Patient ID</p>
+                          <p className="text-base font-bold text-slate-200 tracking-wide">{patient?.generated_patient_id ?? "-"}</p>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-600">Date</p>
-                          <p className="text-sm text-gray-800">
+                        <div className="flex-1 min-w-[100px]">
+                          <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-1">Date</p>
+                          <p className="text-base font-medium text-slate-300">
                             {caseItem.created_at ? new Date(caseItem.created_at).toLocaleDateString() : "-"}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-600">Status</p>
+                        <div className="flex-1 min-w-[100px]">
+                          <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-1">Status</p>
                           <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                            className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase shadow-sm ${
                               caseItem.status === "pending"
-                                ? "bg-yellow-100 text-yellow-700"
+                                ? "bg-yellow-500/20 text-yellow-300"
                                 : caseItem.status === "accepted"
-                                ? "bg-blue-100 text-blue-700"
+                                ? "bg-blue-500/20 text-blue-300"
+                                : caseItem.status === "reviewing"
+                                ? "bg-purple-500/20 text-purple-300"
                                 : caseItem.status === "completed"
-                                ? "bg-green-100 text-green-700"
+                                ? "bg-emerald-500/20 text-emerald-300"
                                 : caseItem.status === "finalized"
-                                ? "bg-emerald-200 text-emerald-800"
-                                : "bg-gray-100 text-gray-700"
+                                ? "bg-cyan-500/20 text-cyan-300"
+                                : "bg-white/10 text-slate-300"
                             }`}
                           >
                             {caseItem.status ?? "N/A"}
@@ -589,7 +596,7 @@ ${caseData?.specialist_diagnosis || ""}`,
                             setSelectedCaseId(caseItem.id ?? null);
                             setViewState("caseDetails");
                           }}
-                          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+                          className="rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-300 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all hover:bg-blue-600/40 hover:text-white"
                         >
                           View Details
                         </button>
@@ -602,52 +609,52 @@ ${caseData?.specialist_diagnosis || ""}`,
           )}
 
           {viewState === "pastCases" && (
-            <section className="bg-white rounded-2xl shadow-md p-6">
-              <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-800">Your History</h2>
+            <section className="glass-panel p-6 flex flex-col">
+              <div className="mb-6 flex items-center justify-between border-b border-white/5 pb-4">
+                <h2 className="medical-caption text-emerald-400">Your History</h2>
                 <button
                   type="button"
                   onClick={() => setViewState("dashboard")}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-blue-50"
+                  className="glass-btn-secondary py-1.5 px-4 text-xs"
                 >
-                  Back to Dashboard
+                  ← Back to Dashboard
                 </button>
               </div>
 
               {caseList.length === 0 ? (
-                <p className="py-10 text-center text-gray-600">No past consultations available.</p>
+                <p className="py-10 text-center text-slate-500 italic">No past consultations available.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {caseList.map((caseItem, index) => (
                     <div
                       key={caseItem.id ?? `past-${index}`}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4"
+                      className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/5 bg-black/30 p-5 transition-all hover:bg-white/5 hover:border-white/10 group"
                     >
-                      <div>
-                        <p className="text-xs text-gray-600">Patient ID</p>
-                        <p className="text-sm font-medium text-gray-800">{patient?.generated_patient_id ?? "-"}</p>
+                      <div className="flex-1 min-w-[120px]">
+                        <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-1">Patient ID</p>
+                        <p className="text-base font-bold text-slate-200 tracking-wide">{patient?.generated_patient_id ?? "-"}</p>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-600">Date</p>
-                        <p className="text-sm text-gray-800">
+                      <div className="flex-1 min-w-[100px]">
+                        <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-1">Date</p>
+                        <p className="text-base font-medium text-slate-300">
                           {caseItem.created_at ? new Date(caseItem.created_at).toLocaleDateString() : "-"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-600">Status</p>
+                      <div className="flex-1 min-w-[100px]">
+                        <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-1">Status</p>
                         <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wide uppercase shadow-sm ${
                             caseItem.status === "pending"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : caseItem.status === "accepted"
-                              ? "bg-blue-100 text-blue-700"
-                              : caseItem.status === "reviewing"
-                              ? "bg-blue-100 text-blue-700"
-                              : caseItem.status === "completed"
-                              ? "bg-green-100 text-green-700"
-                              : caseItem.status === "finalized"
-                              ? "bg-emerald-200 text-emerald-800"
-                              : "bg-gray-100 text-gray-700"
+                                ? "bg-yellow-500/20 text-yellow-300"
+                                : caseItem.status === "accepted"
+                                ? "bg-blue-500/20 text-blue-300"
+                                : caseItem.status === "reviewing"
+                                ? "bg-purple-500/20 text-purple-300"
+                                : caseItem.status === "completed"
+                                ? "bg-emerald-500/20 text-emerald-300"
+                                : caseItem.status === "finalized"
+                                ? "bg-cyan-500/20 text-cyan-300"
+                                : "bg-white/10 text-slate-300"
                           }`}
                         >
                           {caseItem.status ?? "N/A"}
@@ -659,7 +666,7 @@ ${caseData?.specialist_diagnosis || ""}`,
                           setSelectedCaseId(caseItem.id ?? null);
                           setViewState("caseDetails");
                         }}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+                        className="rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-300 px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all hover:bg-blue-600/40 hover:text-white"
                       >
                         View Details
                       </button>
@@ -671,71 +678,96 @@ ${caseData?.specialist_diagnosis || ""}`,
           )}
 
           {viewState === "caseDetails" && (
-            <section className="bg-white rounded-2xl shadow-md p-6">
-              <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-800">Case Details</h2>
+            <section className="glass-panel p-6 flex flex-col relative">
+              <div className="mb-6 flex items-center justify-between border-b border-white/5 pb-4">
+                <h2 className="medical-caption text-blue-400">Case Details</h2>
                 <button
                   type="button"
                   onClick={() => setViewState("pastCases")}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-blue-50"
+                  className="glass-btn-secondary py-1.5 px-4 text-xs"
                 >
-                  Back to Your History
+                  ← Back to Your History
                 </button>
               </div>
 
               {!selectedCase ? (
-                <p className="text-gray-600">No case selected.</p>
+                <p className="text-slate-500 italic text-center py-8">No case selected.</p>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-xl border border-gray-200 bg-white p-4 md:col-span-2">
-                    <h3 className="text-sm font-semibold text-gray-800">Patient Information</h3>
-                    <div className="mt-2 grid gap-2 text-sm text-gray-600 sm:grid-cols-2 lg:grid-cols-3">
-                      <p>Name: {patient?.name ?? "-"}</p>
-                      <p>Patient ID: {patient?.generated_patient_id ?? "-"}</p>
-                      <p>Age: {patient?.age ?? "-"}</p>
-                      <p>Gender: {patient?.gender ?? "-"}</p>
-                      <p>Height: {patient?.height_cm ?? "-"} cm</p>
-                      <p>Weight: {patient?.weight_kg ?? "-"} kg</p>
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="rounded-xl border border-white/5 bg-black/20 p-5 md:col-span-2 transition hover:bg-white/5 shadow-sm relative overflow-hidden">
+                    <h3 className="text-xs uppercase tracking-widest text-slate-400 font-bold mb-4">Patient Information</h3>
+                    <div className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-3">
+                      <p><span className="text-slate-500 text-xs mr-2 uppercase tracking-wide block mb-1">Name</span> {patient?.name ?? "-"}</p>
+                      <p><span className="text-slate-500 text-xs mr-2 uppercase tracking-wide block mb-1">Patient ID</span> <span className="text-white font-mono">{patient?.generated_patient_id ?? "-"}</span></p>
+                      <p><span className="text-slate-500 text-xs mr-2 uppercase tracking-wide block mb-1">Age</span> {patient?.age ?? "-"}</p>
+                      <p><span className="text-slate-500 text-xs mr-2 uppercase tracking-wide block mb-1">Gender</span> {patient?.gender ?? "-"}</p>
+                      <p><span className="text-slate-500 text-xs mr-2 uppercase tracking-wide block mb-1">Height</span> {patient?.height_cm ?? "-"} cm</p>
+                      <p><span className="text-slate-500 text-xs mr-2 uppercase tracking-wide block mb-1">Weight</span> {patient?.weight_kg ?? "-"} kg</p>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-gray-200 bg-white p-4">
-                    <h3 className="text-sm font-semibold text-gray-800">Vitals</h3>
-                    <div className="mt-2 space-y-1 text-sm text-gray-600">
-                      <p>
-                        Blood Pressure:{" "}
+                  <div className="rounded-xl border border-white/5 bg-black/20 p-5 transition hover:bg-white/5 shadow-sm">
+                    <h3 className="text-[11px] uppercase tracking-widest text-blue-400 font-bold mb-4 flex items-center gap-2">Vitals</h3>
+                    <div className="space-y-3 text-sm text-slate-300">
+                      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">Blood Pressure</span>
+                        <span className="font-mono text-blue-200">
                         {selectedVitals?.systolic_bp !== null && selectedVitals?.diastolic_bp !== null
                           ? `${selectedVitals.systolic_bp} / ${selectedVitals.diastolic_bp} mmHg`
                           : "-"}
-                      </p>
-                      <p>
-                        Temperature:{" "}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">Temperature</span>
+                        <span className="font-mono text-blue-200">
                         {selectedVitals?.temperature_f !== null ? `${selectedVitals.temperature_f} °F` : "-"}
-                      </p>
-                      <p>SpO2: {selectedVitals?.spo2 ?? "-"}</p>
-                      <p>Respiratory Rate: {selectedVitals?.respiratory_rate ?? "-"} breaths/min</p>
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">SpO2</span>
+                        <span className="font-mono text-blue-200">{selectedVitals?.spo2 ?? "-"} %</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">Resp. Rate</span>
+                        <span className="font-mono text-blue-200">{selectedVitals?.respiratory_rate ?? "-"} bpm</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-gray-200 bg-white p-4">
-                    <h3 className="text-sm font-semibold text-gray-800">Spirometry</h3>
-                    <div className="mt-2 space-y-1 text-sm text-gray-600">
-                      <p>FVC: {selectedSpirometry?.fvc ?? "-"} L</p>
-                      <p>FEV1: {selectedSpirometry?.fev1 ?? "-"} L</p>
-                      <p>FEV1/FVC: {selectedSpirometry?.fev1_fvc ?? "-"} %</p>
-                      <p>FEV1/FEV6: {selectedSpirometry?.fev1_fev6 ?? "-"} %</p>
-                      <p>PEF: {selectedSpirometry?.pef ?? "-"} L/min</p>
+                  <div className="rounded-xl border border-white/5 bg-black/20 p-5 transition hover:bg-white/5 shadow-sm">
+                    <h3 className="text-[11px] uppercase tracking-widest text-emerald-400 font-bold mb-4 flex items-center gap-2">Spirometry</h3>
+                    <div className="space-y-3 text-sm text-slate-300">
+                      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">FVC</span>
+                        <span className="font-mono text-emerald-200">{selectedSpirometry?.fvc ?? "-"} L</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">FEV1</span>
+                        <span className="font-mono text-emerald-200">{selectedSpirometry?.fev1 ?? "-"} L</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">FEV1/FVC</span>
+                        <span className="font-mono text-emerald-200">{selectedSpirometry?.fev1_fvc ?? "-"} %</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">FEV1/FEV6</span>
+                        <span className="font-mono text-emerald-200">{selectedSpirometry?.fev1_fev6 ?? "-"} %</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 text-xs font-semibold uppercase tracking-widest">PEF</span>
+                        <span className="font-mono text-emerald-200">{selectedSpirometry?.pef ?? "-"} L/m</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="md:col-span-2 flex flex-wrap gap-3">
+                  <div className="md:col-span-2 flex flex-wrap gap-3 py-2">
                     <button
                       type="button"
                       onClick={handleDownload}
                       disabled={downloading}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                      className="glass-btn-primary px-6"
                     >
-                      {downloading ? "Downloading..." : "Download Report"}
+                      {downloading ? "Downloading PDF..." : "📄 Download Official Report"}
                     </button>
                   </div>
 
@@ -802,17 +834,16 @@ ${caseData?.specialist_diagnosis || ""}`,
             </section>
           )}
 
-          <div className="rounded-2xl border border-white/50 bg-gradient-to-br from-white/85 to-blue-100/60 p-5 shadow-md backdrop-blur-xl transition-all duration-300 animate-in fade-in-0 slide-in-from-bottom-2 hover:-translate-y-1 hover:shadow-lg">
-            <h3 className="text-base font-semibold text-slate-800">Need help understanding your report?</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              You can ask PulmoAI simple questions in the chat bubble. It explains your report in easy language.
+          <div className="glass-panel p-6 mt-12 mb-4 flex flex-col items-center justify-center text-center">
+            <h3 className="medical-caption text-blue-400 mb-2 mt-2 font-bold">Need help understanding your report?</h3>
+            <p className="mt-2 text-base text-slate-300 max-w-2xl leading-relaxed">
+              You can ask PulmoAI simple questions in the chat bubble. It explains your medical report in easy, accessible language.
             </p>
-            <div className="mt-3 inline-flex animate-float-slow rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700">
-              PulmoAI chat is active on this page
+            <div className="mt-5 mb-3 inline-flex rounded-full border border-blue-500/30 bg-blue-500/10 px-5 py-2 text-sm font-bold tracking-wide text-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+              ⚡ PulmoAI chat is active on this page
             </div>
-            <p className="mt-3 text-sm text-gray-500">
-              PulmoAI provides educational information only. Diagnosis and treatment decisions must be made by your
-              doctor.
+            <p className="mt-4 text-xs uppercase tracking-widest font-mono text-slate-500 max-w-xl text-center pb-2 opacity-80">
+              DISCLAIMER: PulmoAI provides educational information only. Diagnosis and treatment decisions must be made by your doctor.
             </p>
           </div>
         </div>

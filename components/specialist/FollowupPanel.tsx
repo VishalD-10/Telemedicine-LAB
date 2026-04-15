@@ -12,14 +12,14 @@ type FollowupPanelProps = {
   onIntervalChange: (value: string) => void;
   onDateChange: (value: string) => void;
   onNotesChange: (value: string) => void;
-  onSave: () => void;
+  onSave: () => Promise<{ error?: string } | void>;
 };
 
 const shellClass =
-  "rounded-2xl border border-blue-100/70 bg-gradient-to-br from-white/90 to-blue-50/70 p-5 shadow-[0_16px_42px_-26px_rgba(30,64,175,0.6)] backdrop-blur-md transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_20px_46px_-24px_rgba(30,64,175,0.65)]";
+  "glass-panel p-6 relative overflow-hidden transition-all duration-300 max-w-full";
 
 const fieldClass =
-  "w-full rounded-xl border border-blue-100 bg-white/80 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 transition focus:border-blue-400 focus:ring-2 focus:ring-blue-200";
+  "glass-input w-full";
 
 export default function FollowupPanel({
   selectedDiagnosisId,
@@ -61,12 +61,12 @@ export default function FollowupPanel({
 
   return (
     <section className={`${shellClass} animate-in fade-in-0 slide-in-from-bottom-2 duration-500`}>
-      <h3 className="text-base font-semibold text-slate-800">Follow-up Scheduling</h3>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <label className="text-sm text-slate-700">
+      <h3 className="medical-caption text-blue-400 mb-4">Follow-up Scheduling</h3>
+      <div className="mt-4 grid gap-5 md:grid-cols-2">
+        <label className="text-sm text-slate-300 block">
           Suggested Interval
           <select
-            className={`${fieldClass} mt-1`}
+            className={`${fieldClass} mt-2 text-slate-800`}
             value={interval}
             onChange={(e) => {
               onIntervalChange(e.target.value);
@@ -74,17 +74,17 @@ export default function FollowupPanel({
               setIsSaved(false);
             }}
           >
-            <option value="1 week">1 week</option>
-            <option value="2 weeks">2 weeks</option>
-            <option value="4 weeks">4 weeks</option>
-            <option value="6 weeks">6 weeks</option>
-            <option value="3 months">3 months</option>
+            <option value="1 week" className="text-black">1 week</option>
+            <option value="2 weeks" className="text-black">2 weeks</option>
+            <option value="4 weeks" className="text-black">4 weeks</option>
+            <option value="6 weeks" className="text-black">6 weeks</option>
+            <option value="3 months" className="text-black">3 months</option>
           </select>
         </label>
-        <label className="text-sm text-slate-700">
+        <label className="text-sm text-slate-300 block">
           Custom Follow-up Date
           <input
-            className={`${fieldClass} mt-1`}
+            className={`${fieldClass} mt-2 [&::-webkit-calendar-picker-indicator]:filter-[invert(1)]`}
             type="date"
             value={date}
             onChange={(e) => {
@@ -95,7 +95,7 @@ export default function FollowupPanel({
           />
         </label>
       </div>
-      <label className="mt-3 block text-sm text-slate-700">
+      <label className="mt-5 block text-sm text-slate-300">
         Follow-up Notes
         <textarea
           className={`${fieldClass} mt-1 min-h-20`}
@@ -108,39 +108,40 @@ export default function FollowupPanel({
           placeholder="Monitoring focus, warning signs, and escalation guidance"
         />
       </label>
-      <div className="mt-4">
+      <div className="mt-8 flex gap-3">
         <button
           type="button"
           onClick={async () => {
             setIsSaving(true);
-            await onSave();
+            const result = await onSave();
             setIsSaving(false);
-            setIsSaved(true);
-            setIsDirty(false);
-            setShowToast(true);
-            setTimeout(() => setShowToast(false), 3000);
+            const suc = (result as { success?: boolean } | null | undefined)?.success;
+            if (suc) {
+              setIsSaved(true);
+              setIsDirty(false);
+              setShowToast(true);
+              setTimeout(() => setShowToast(false), 5500);
+            }
           }}
           disabled={isSaving || Boolean(saving) || (isSaved && !isDirty)}
-          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:opacity-60"
+          className="glass-btn-primary flex-1 max-w-[200px]"
         >
-          {isSaving || saving ? "Saving..." : isSaved && !isDirty ? "Saved" : "Save"}
+          {isSaving || saving ? "Saving..." : isSaved && !isDirty ? "Schedule Follow-up" : "Schedule Follow-up"}
         </button>
         {isSaved ? (
           <button
             type="button"
-            onClick={() => {
-              setIsSaved(false);
-              setIsDirty(true);
-            }}
-            className="ml-2 rounded-xl border border-blue-200 bg-white/90 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+            onClick={() => { setIsSaved(false); setIsDirty(true); }}
+            className="glass-btn-secondary"
           >
             Modify
           </button>
         ) : null}
       </div>
+
       {showToast && (
-        <div className="fixed bottom-6 right-6 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in">
-          Saved successfully
+        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-xl bg-green-600 shadow-xl text-white text-sm font-medium transition-all animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          ✅ Follow-up saved successfully
         </div>
       )}
     </section>

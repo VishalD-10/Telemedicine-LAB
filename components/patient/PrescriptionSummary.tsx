@@ -15,34 +15,38 @@ type PrescriptionSummaryProps = {
 
 export default function PrescriptionSummary({ items }: PrescriptionSummaryProps) {
   return (
-    <section className="rounded-2xl border border-white/50 bg-gradient-to-br from-white/80 to-blue-100/50 p-5 shadow-md backdrop-blur-xl transition-all duration-300 animate-in fade-in-0 slide-in-from-bottom-2 hover:-translate-y-1 hover:shadow-lg">
-      <h3 className="text-lg font-semibold text-slate-800">Prescribed Pharmacological Regimen</h3>
+    <section className="glass-panel p-6 w-full flex flex-col h-full hover:-translate-y-1 transition-transform duration-300">
+      <h3 className="medical-caption text-purple-700 mb-4">Prescribed Pharmacological Regimen</h3>
       {items.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-600">No prescription entries.</p>
+        <div className="rounded-xl bg-white/85 border border-slate-200 p-6 text-center">
+          <p className="text-sm font-medium text-slate-600 italic">No prescription entries attached.</p>
+        </div>
       ) : (
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm text-slate-700">
-            <thead className="text-xs uppercase text-slate-500">
-              <tr>
-                <th className="pb-2">Medicine</th>
-                <th className="pb-2">Dosage</th>
-                <th className="pb-2">Frequency</th>
-                <th className="pb-2">Duration</th>
-                <th className="pb-2">Instructions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-t border-white/60">
-                  <td className="px-2 py-3">{item.medication_name || "-"}</td>
-                  <td className="px-2 py-3">{item.dosage || "-"}</td>
-                  <td className="px-2 py-3">{item.frequency || "-"}</td>
-                  <td className="px-2 py-3">{item.duration_days || "-"}</td>
-                  <td className="px-2 py-3">{item.instructions || "-"}</td>
+        <div className="rounded-xl bg-white/85 border border-slate-200 overflow-hidden shadow-inner">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm text-slate-700">
+              <thead className="bg-slate-100 text-[10px] uppercase tracking-widest text-slate-600 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3">Medicine</th>
+                  <th className="px-4 py-3">Dosage</th>
+                  <th className="px-4 py-3">Frequency</th>
+                  <th className="px-4 py-3">Duration</th>
+                  <th className="px-4 py-3">Instructions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {items.map((item) => (
+                  <tr key={item.id} className="transition hover:bg-slate-50">
+                    <td className="px-4 py-3 font-semibold text-slate-900">{item.medication_name || "-"}</td>
+                    <td className="px-4 py-3">{item.dosage || "-"}</td>
+                    <td className="px-4 py-3">{item.frequency || "-"}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-600">{item.duration_days || "-"}</td>
+                    <td className="px-4 py-3">{item.instructions || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>

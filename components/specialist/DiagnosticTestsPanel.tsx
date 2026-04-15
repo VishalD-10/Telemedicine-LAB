@@ -11,7 +11,7 @@ type FurtherDiagnosticsChecklistPanelProps = {
 };
 
 const shellClass =
-  "rounded-2xl border border-blue-100/70 bg-gradient-to-br from-white/90 to-blue-50/70 p-5 shadow-[0_16px_42px_-26px_rgba(30,64,175,0.6)] backdrop-blur-md transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_20px_46px_-24px_rgba(30,64,175,0.65)]";
+  "glass-panel p-6 relative overflow-hidden transition-all duration-300 max-w-full";
 
 const PULMO_TESTS = [
   "CT Chest",
@@ -53,14 +53,14 @@ export default function FurtherDiagnosticsChecklistPanel({
 
   return (
     <section className={`${shellClass} animate-in fade-in-0 slide-in-from-bottom-2 duration-500`}>
-      <h3 className="text-base font-semibold text-slate-800">Further Diagnostics Checklist</h3>
-      <p className="mt-1 text-xs text-slate-600">Clinician-selected investigations for the current case.</p>
+      <h3 className="medical-caption text-blue-400 mb-2">Further Diagnostics Checklist</h3>
+      <p className="mt-1 text-xs text-slate-400 mb-4">Clinician-selected investigations for the current case.</p>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {PULMO_TESTS.map((test) => (
           <label
             key={test}
-            className="flex cursor-pointer items-center gap-2 rounded-xl border border-blue-100/80 bg-white/80 px-3 py-2 text-sm text-slate-700 transition hover:bg-blue-50/80"
+            className="flex cursor-pointer items-center gap-3 rounded-xl bg-black/20 border border-white/5 px-3 py-2 text-sm text-slate-300 transition hover:bg-white/5"
           >
             <input
               type="checkbox"
@@ -73,9 +73,9 @@ export default function FurtherDiagnosticsChecklistPanel({
         ))}
       </div>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-6 flex gap-3">
         <input
-          className="w-full rounded-xl border border-blue-100 bg-white/80 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-200"
+          className="glass-input w-full"
           value={customFurtherDiagnosticInput}
           onChange={(e) => onCustomFurtherDiagnosticInputChange(e.target.value)}
           placeholder="Add custom diagnostic procedure"
@@ -83,28 +83,28 @@ export default function FurtherDiagnosticsChecklistPanel({
         <button
           type="button"
           onClick={onAddCustomFurtherDiagnostic}
-          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500"
+          className="glass-btn-primary px-8"
         >
-          Add
+          Add Procedure
         </button>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         {furtherDiagnostics.length === 0 ? (
-          <p className="text-sm text-slate-500">No procedures selected.</p>
+          <p className="text-sm text-slate-500 italic">No procedures selected.</p>
         ) : (
           furtherDiagnostics.map((test, idx) => (
             <span
               key={`${test}-${idx}`}
-              className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/85 px-3 py-1 text-xs text-slate-700"
+              className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs text-blue-300"
             >
               {test}
               <button
                 type="button"
                 onClick={() => onRemoveFurtherDiagnostic(idx)}
-                className="text-red-500 transition hover:text-red-600"
+                className="text-red-400 transition hover:text-red-300 ml-1 font-bold"
               >
-                x
+                ×
               </button>
             </span>
           ))

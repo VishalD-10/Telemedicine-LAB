@@ -10,8 +10,8 @@ export default function ChatHeader({ caseId, patientName, priority }: ChatHeader
   const isEmergency = priority === "emergency";
 
   return (
-    <div className="rounded-xl border border-white/50 bg-white/55 p-3 shadow-sm backdrop-blur-md">
-      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Clinical Discussion</p>
+    <div className="rounded-xl border border-slate-200/80 bg-white/85 p-3 text-slate-900 shadow-sm backdrop-blur-md">
+      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-600">Clinical Discussion</p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <div className="space-y-0.5 text-sm text-slate-700">
           <p>

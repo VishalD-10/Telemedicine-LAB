@@ -20,12 +20,18 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
+try:
+    import qrcode  # type: ignore
+except Exception:  # pragma: no cover
+    qrcode = None
 from pydicom.multival import MultiValue
 from pydicom.valuerep import DSfloat, IS
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.graphics.barcode import qr as rl_qr
+from reportlab.graphics.shapes import Drawing
 from reportlab.platypus import Image as RLImage
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
@@ -206,6 +212,67 @@ def _format_date(value: Any) -> str:
     if isinstance(value, str):
         return value.replace("T", " ").replace("Z", " UTC")
     return str(value)
+
+
+def build_fhir_json(
+    case_row,
+    patient_row,
+    diagnosis_row,
+    treatment_row,
+    prescription_rows,
+    followup_row,
+    vitals,
+    spirometry,
+    xray_path,
+):
+    case_row = case_row or {}
+    patient_row = patient_row or {}
+    diagnosis_row = diagnosis_row or {}
+    treatment_row = treatment_row or {}
+    prescription_rows = prescription_rows or []
+    followup_row = followup_row or {}
+    vitals = vitals or {}
+    spirometry = spirometry or {}
+
+    return {
+        "patient": {
+            "id": patient_row.get("generated_patient_id"),
+            "name": patient_row.get("name"),
+            "age": patient_row.get("age"),
+            "gender": patient_row.get("gender"),
+        },
+        "encounter": {
+            "case_id": case_row.get("id"),
+            "visit_date": case_row.get("created_at"),
+            "review_date": case_row.get("reviewed_at"),
+            "rural_doctor": case_row.get("rural_doctor_id"),
+            "specialist": case_row.get("specialist_id"),
+        },
+        "observations": {
+            "vitals": {
+                "bp": {
+                    "systolic": vitals.get("systolic_bp"),
+                    "diastolic": vitals.get("diastolic_bp"),
+                },
+                "temperature": vitals.get("temperature_f"),
+                "spo2": vitals.get("spo2"),
+                "resp_rate": vitals.get("respiratory_rate"),
+            },
+            "spirometry": spirometry,
+        },
+        "diagnosis": {
+            "rural": case_row.get("rural_diagnosis_report"),
+            "specialist": diagnosis_row.get("diagnosis_name"),
+            "severity": diagnosis_row.get("severity"),
+            "notes": diagnosis_row.get("specialist_notes"),
+        },
+        "treatment": treatment_row,
+        "prescriptions": prescription_rows,
+        "followup": followup_row,
+        "imaging": {
+            "xray_path": xray_path,
+        },
+    }
 
 
 def _build_report_pdf(
@@ -555,6 +622,18 @@ def _generate_pdf_async(target_case_id: str) -> None:
         xray_path = xray_entry.get("file_path") if isinstance(xray_entry, dict) else None
         xray_png = _dicom_to_png_bytes("x_rays", xray_path) if xray_path else None
 
+        fhir_data = build_fhir_json(
+            case_row,
+            patient_row,
+            diagnosis_row,
+            treatment_template,
+            prescription_rows,
+            followup_row,
+            vitals or {},
+            spirometry or {},
+            xray_path,
+        )
+
         styles = getSampleStyleSheet()
         title_style = styles["Title"]
         title_style.alignment = 1
@@ -663,16 +742,17 @@ def _generate_pdf_async(target_case_id: str) -> None:
             bottomMargin=0.85 * inch,
         )
 
-        patient_name = patient_row.get("name") or "-"
-        patient_generated_id = patient_row.get("generated_patient_id") or "-"
+        patient_name = fhir_data["patient"]["name"] or "-"
+        patient_generated_id = fhir_data["patient"]["id"] or "-"
         rural_doctor_name = rural_doctor.get("full_name") or "-"
         specialist_name = specialist.get("full_name") or "-"
 
-        systolic_bp = vitals.get("systolic_bp") if isinstance(vitals, dict) else None
-        diastolic_bp = vitals.get("diastolic_bp") if isinstance(vitals, dict) else None
-        temperature_f = vitals.get("temperature_f") if isinstance(vitals, dict) else None
-        spo2 = vitals.get("spo2") if isinstance(vitals, dict) else None
-        respiratory_rate = vitals.get("respiratory_rate") if isinstance(vitals, dict) else None
+        vitals_data = fhir_data["observations"]["vitals"]
+        systolic_bp = vitals_data["bp"]["systolic"]
+        diastolic_bp = vitals_data["bp"]["diastolic"]
+        temperature_f = vitals_data["temperature"]
+        spo2 = vitals_data["spo2"]
+        respiratory_rate = vitals_data["resp_rate"]
 
         bp_value = "-"
         if systolic_bp is not None and diastolic_bp is not None:
@@ -695,7 +775,7 @@ def _generate_pdf_async(target_case_id: str) -> None:
         if respiratory_rate is not None:
             respiratory_value = f"{highlight(respiratory_rate, 12, 20)} /min"
 
-        spirometry = spirometry or {}
+        spirometry = fhir_data["observations"]["spirometry"] or {}
         table_data = [
             ["Parameter", "Measured", "Normal Range"],
 
@@ -706,14 +786,14 @@ def _generate_pdf_async(target_case_id: str) -> None:
             ["PEF", f"{spirometry.get('pef', '-')}", "400 – 700 L/min"],
         ]
 
-        treatment_data = treatment_template or {}
+        treatment_data = fhir_data["treatment"] or {}
         oxygen_therapy = treatment_data.get("oxygen_therapy")
         oxygen_text = "Required" if oxygen_therapy is True else "Not Required" if oxygen_therapy is False else "-"
 
-        specialist_diagnosis = diagnosis_row or {}
-        specialist_diagnosis_text = specialist_diagnosis.get("diagnosis_name") or "-"
-        specialist_severity = specialist_diagnosis.get("severity") or "-"
-        specialist_notes = specialist_diagnosis.get("specialist_notes") or "-"
+        diagnosis_data = fhir_data["diagnosis"] or {}
+        specialist_diagnosis_text = diagnosis_data.get("specialist") or "-"
+        specialist_severity = diagnosis_data.get("severity") or "-"
+        specialist_notes = diagnosis_data.get("notes") or "-"
 
         treatment_rows = [
             ["Treatment Name", treatment_data.get("treatment_title") or "-"],
@@ -725,7 +805,7 @@ def _generate_pdf_async(target_case_id: str) -> None:
             ["Referral Recommendation", treatment_data.get("referral_recommendation") or "-"],
         ]
 
-        followup_data = followup_row or {}
+        followup_data = fhir_data["followup"] or {}
         diagnostic_procedures = _as_list(followup_data.get("diagnostic_procedures"))
 
         prescription_table_rows = [[_cell("Medicine"), _cell("Dosage"), _cell("Frequency"), _cell("Duration")]]
@@ -738,6 +818,27 @@ def _generate_pdf_async(target_case_id: str) -> None:
             ])
 
         story = []
+        logo_path = Path(__file__).with_name("logo.png")
+        if logo_path.exists():
+            story.append(RLImage(str(logo_path), width=100, height=40))
+            story.append(Spacer(1, 6))
+        case_qr_value = str(case_row.get("id") or "")
+        if case_qr_value:
+            if qrcode is not None:
+                qr_img = qrcode.make(case_qr_value)
+                qr_buffer = BytesIO()
+                qr_img.save(qr_buffer, format="PNG")
+                qr_buffer.seek(0)
+                story.append(RLImage(qr_buffer, width=80, height=80))
+            else:
+                qr_widget = rl_qr.QrCodeWidget(case_qr_value)
+                bounds = qr_widget.getBounds()
+                qr_width = max(bounds[2] - bounds[0], 1)
+                qr_height = max(bounds[3] - bounds[1], 1)
+                qr_drawing = Drawing(80, 80, transform=[80 / qr_width, 0, 0, 80 / qr_height, 0, 0])
+                qr_drawing.add(qr_widget)
+                story.append(qr_drawing)
+            story.append(Spacer(1, 8))
         story.append(_section_title("TELE-PULMONOLOGY MEDICAL REPORT"))
         story.append(_blue_rule())
         story.append(Spacer(1, 8))
@@ -756,7 +857,7 @@ def _generate_pdf_async(target_case_id: str) -> None:
             [_cell("Gender"), _cell(patient_row.get("gender") or "-")],
             [_cell("Height"), _cell(patient_row.get("height_cm") or "-")],
             [_cell("Weight"), _cell(patient_row.get("weight_kg") or "-")],
-            [_cell("Smoking History"), _cell(patient_row.get("smoking_history") or "-")],
+            [_cell("Patient History"), _cell(patient_row.get("smoking_history") or "-")],
             [_cell("Visit Date"), _cell(case_row.get("created_at") or "-")],
         ]
         story.append(_build_key_value_table(patient_info_rows, [1.8 * inch, 5.2 * inch]))

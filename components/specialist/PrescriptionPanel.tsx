@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 
 export type PrescriptionRow = {
   id: string;
@@ -21,14 +20,14 @@ type PrescriptionPanelProps = {
   onChangeRow: (id: string, field: keyof Omit<PrescriptionRow, "id">, value: string) => void;
   onAddRow: () => void;
   onRemoveRow: (id: string) => void;
-  onSave: () => void;
+  onSave: () => Promise<{ error?: string } | void>;
 };
 
 const shellClass =
-  "rounded-2xl border border-blue-100/70 bg-gradient-to-br from-white/90 to-blue-50/70 p-5 shadow-[0_16px_42px_-26px_rgba(30,64,175,0.6)] backdrop-blur-md transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_20px_46px_-24px_rgba(30,64,175,0.65)]";
+  "glass-panel p-6 relative overflow-hidden transition-all duration-300 max-w-full";
 
 const fieldClass =
-  "w-full rounded-lg border border-blue-100 bg-white/90 px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 transition focus:border-blue-400 focus:ring-1 focus:ring-blue-200";
+  "glass-input w-full text-xs py-2";
 
 export default function PrescriptionPanel({
   rows,
@@ -64,6 +63,8 @@ export default function PrescriptionPanel({
         return;
       }
 
+      // Dynamic import to avoid circular dependency
+      const { supabase } = await import("@/lib/supabaseClient");
       const { data } = await supabase
         .from("prescription_templates")
         .select("*")
@@ -115,12 +116,15 @@ export default function PrescriptionPanel({
       onChangeRow(row.id, "duration", row.duration);
       onChangeRow(row.id, "notes", row.notes);
     });
-    await onSave();
+    const result = await onSave();
     setIsSaving(false);
-    setIsSaved(true);
-    setIsDirty(false);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+    const suc = (result as { success?: boolean } | null | undefined)?.success;
+    if (suc) {
+      setIsSaved(true);
+      setIsDirty(false);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5500);
+    }
   };
 
   if (loading) {
@@ -138,69 +142,40 @@ export default function PrescriptionPanel({
 
   return (
     <section className={`${shellClass} animate-in fade-in-0 slide-in-from-bottom-2 duration-500`}>
-      <h3 className="text-base font-semibold text-slate-800">Pharmacological Prescription</h3>
+      <h3 className="medical-caption text-blue-400 mb-2">Pharmacological Prescription</h3>
 
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[820px] border-separate border-spacing-y-2 text-xs text-slate-700">
+        <table className="w-full min-w-[820px] border-separate border-spacing-y-2 text-xs text-slate-300">
           <thead>
             <tr>
-              <th className="px-2 text-left font-semibold">Medication</th>
-              <th className="px-2 text-left font-semibold">Dosage</th>
-              <th className="px-2 text-left font-semibold">Frequency</th>
-              <th className="px-2 text-left font-semibold">Duration</th>
-              <th className="px-2 text-left font-semibold">Notes</th>
-              <th className="px-2 text-left font-semibold">Action</th>
+              <th className="px-2 text-left font-semibold uppercase tracking-wider text-slate-500">Medication</th>
+              <th className="px-2 text-left font-semibold uppercase tracking-wider text-slate-500">Dosage</th>
+              <th className="px-2 text-left font-semibold uppercase tracking-wider text-slate-500">Frequency</th>
+              <th className="px-2 text-left font-semibold uppercase tracking-wider text-slate-500">Duration</th>
+              <th className="px-2 text-left font-semibold uppercase tracking-wider text-slate-500">Notes</th>
+              <th className="px-2 text-left font-semibold uppercase tracking-wider text-slate-500">Action</th>
             </tr>
           </thead>
           <tbody>
             {prescriptionRows.map((row) => (
-              <tr key={row.id} className="rounded-xl bg-white/80 shadow-sm transition hover:bg-white">
+              <tr key={row.id} className="rounded-xl bg-black/20 border border-white/5 shadow-sm transition hover:bg-white/5">
                 <td className="px-2 py-2">
-                  <input
-                    className={fieldClass}
-                    value={row.medication}
-                    onChange={(e) => handleChange(row.id, "medication", e.target.value)}
-                    placeholder="Drug"
-                  />
+                  <input className={fieldClass} value={row.medication} onChange={(e) => handleChange(row.id, "medication", e.target.value)} placeholder="Drug" />
                 </td>
                 <td className="px-2 py-2">
-                  <input
-                    className={fieldClass}
-                    value={row.dosage}
-                    onChange={(e) => handleChange(row.id, "dosage", e.target.value)}
-                    placeholder="e.g. 500 mg"
-                  />
+                  <input className={fieldClass} value={row.dosage} onChange={(e) => handleChange(row.id, "dosage", e.target.value)} placeholder="e.g. 500 mg" />
                 </td>
                 <td className="px-2 py-2">
-                  <input
-                    className={fieldClass}
-                    value={row.frequency}
-                    onChange={(e) => handleChange(row.id, "frequency", e.target.value)}
-                    placeholder="e.g. BID"
-                  />
+                  <input className={fieldClass} value={row.frequency} onChange={(e) => handleChange(row.id, "frequency", e.target.value)} placeholder="e.g. BID" />
                 </td>
                 <td className="px-2 py-2">
-                  <input
-                    className={fieldClass}
-                    value={row.duration}
-                    onChange={(e) => handleChange(row.id, "duration", e.target.value)}
-                    placeholder="e.g. 7 days"
-                  />
+                  <input className={fieldClass} value={row.duration} onChange={(e) => handleChange(row.id, "duration", e.target.value)} placeholder="e.g. 7 days" />
                 </td>
                 <td className="px-2 py-2">
-                  <input
-                    className={fieldClass}
-                    value={row.notes}
-                    onChange={(e) => handleChange(row.id, "notes", e.target.value)}
-                    placeholder="Additional instructions"
-                  />
+                  <input className={fieldClass} value={row.notes} onChange={(e) => handleChange(row.id, "notes", e.target.value)} placeholder="Additional instructions" />
                 </td>
                 <td className="px-2 py-2">
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(row.id)}
-                    className="rounded-lg bg-red-50 px-2 py-1 text-red-600 transition hover:bg-red-100"
-                  >
+                  <button type="button" onClick={() => handleRemove(row.id)} className="rounded-lg bg-red-500/20 px-3 py-1.5 text-red-400 border border-red-500/30 transition hover:bg-red-500/40 font-medium tracking-wide">
                     Remove
                   </button>
                 </td>
@@ -210,40 +185,38 @@ export default function PrescriptionPanel({
         </table>
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-8 flex items-center justify-between gap-4">
         <button
           type="button"
           onClick={handleAdd}
-          className="rounded-xl border border-blue-200 bg-white/90 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+          className="glass-btn-secondary max-w-[200px]"
         >
-          Add Medication
+          + Add Medication
         </button>
-        <button
-          type="button"
-          onClick={async () => {
-            await handleSave();
-          }}
-          disabled={isSaving || Boolean(saving) || (isSaved && !isDirty)}
-          className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 disabled:opacity-60"
-        >
-          {isSaving || saving ? "Saving..." : isSaved && !isDirty ? "Saved" : "Save"}
-        </button>
-        {isSaved ? (
+        <div className="flex gap-3">
+          {isSaved ? (
+            <button
+              type="button"
+              onClick={() => { setIsSaved(false); setIsDirty(true); }}
+              className="glass-btn-secondary"
+            >
+              Modify
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => {
-              setIsSaved(false);
-              setIsDirty(true);
-            }}
-            className="rounded-xl border border-blue-200 bg-white/90 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+            onClick={handleSave}
+            disabled={isSaving || Boolean(saving) || (isSaved && !isDirty)}
+            className="glass-btn-primary min-w-[160px]"
           >
-            Modify
+            {isSaving || saving ? "Saving..." : isSaved && !isDirty ? "Saved" : "Save Rx"}
           </button>
-        ) : null}
+        </div>
       </div>
+
       {showToast && (
-        <div className="fixed bottom-6 right-6 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in">
-          Saved successfully
+        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-xl bg-green-600 shadow-xl text-white text-sm font-medium transition-all animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          ✅ Prescription saved successfully
         </div>
       )}
     </section>
