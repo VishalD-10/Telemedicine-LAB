@@ -453,8 +453,8 @@ ${caseData?.specialist_diagnosis || ""}`,
         <div className="mx-auto max-w-7xl space-y-8">
           <div className="glass-panel p-6 flex flex-wrap items-center justify-between gap-5">
             <div>
-              <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-slate-900 mb-1">Patient Dashboard</h1>
-              <p className="text-base font-medium text-slate-600">Welcome, {patient?.name ?? "Patient"}</p>
+              <h1 className="text-4xl lg:text-5xl font-bold tracking-tight text-slate-900 mb-1">Health Records</h1>
+              <p className="text-lg font-medium text-slate-600">Patient: {patient?.name ?? "Patient"}</p>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -497,8 +497,8 @@ ${caseData?.specialist_diagnosis || ""}`,
                 <h2 className="medical-caption text-blue-700 mb-5">Patient Case Summary</h2>
                 <div className="mt-2 grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-slate-200 bg-white/85 p-5 transition hover:bg-white">
-                    <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Patient ID</p>
-                    <p className="text-base font-bold text-slate-900 tracking-wide">{patient?.generated_patient_id ?? "-"}</p>
+                    <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Record Reference</p>
+                    <p className="text-lg font-bold text-slate-900 tracking-wide">{patient?.generated_patient_id ?? "-"}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white/85 p-5 transition hover:bg-white">
                     <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Case Status</p>
@@ -521,16 +521,16 @@ ${caseData?.specialist_diagnosis || ""}`,
                     </span>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white/85 p-5 transition hover:bg-white">
-                    <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Specialist Assigned</p>
-                    <p className="text-base font-bold text-slate-900">{specialistName}</p>
+                    <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Consulting Specialist</p>
+                    <p className="text-lg font-bold text-slate-900">{specialistName}</p>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white/85 p-5 transition hover:bg-white">
                     <p className="text-xs text-slate-600 uppercase tracking-widest font-semibold mb-1">Last Update</p>
-                    <p className="text-base font-medium text-slate-700">
+                    <p className="text-lg font-medium text-slate-700">
                       {selectedCase?.reviewed_at
-                        ? new Date(selectedCase.reviewed_at).toLocaleString()
+                        ? new Date(selectedCase.reviewed_at).toLocaleDateString(undefined, { dateStyle: 'long' })
                         : selectedCase?.created_at
-                        ? new Date(selectedCase.created_at).toLocaleString()
+                        ? new Date(selectedCase.created_at).toLocaleDateString(undefined, { dateStyle: 'long' })
                         : "-"}
                     </p>
                   </div>
@@ -821,8 +821,8 @@ ${caseData?.specialist_diagnosis || ""}`,
                             treatmentGenerated: treatmentDetail?.createdAt ?? null,
                             followupScheduled: followupDetail?.createdAt ?? null,
                             caseFinalized:
-                              selectedCase.status === "finalized"
-                                ? followupDetail?.createdAt ?? specialistRequestDetail?.completedAt ?? null
+                              (selectedCase.status?.toLowerCase() === "finalized" || specialistRequestDetail?.completedAt)
+                                ? specialistRequestDetail?.completedAt ?? new Date().toISOString()
                                 : null,
                           }}
                         />

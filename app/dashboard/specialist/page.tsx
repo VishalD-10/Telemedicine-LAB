@@ -116,6 +116,7 @@ export default function SpecialistDashboardPage() {
   const [acceptedRequests, setAcceptedRequests] = useState<SpecialistRequestRow[]>([]);
   const [pastRequests, setPastRequests] = useState<SpecialistRequestRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [viewState, setViewState] = useState<"list" | "accept" | "review" | "past">("list");
 
   const [baseDataReady, setBaseDataReady] = useState(false);
@@ -302,6 +303,12 @@ export default function SpecialistDashboardPage() {
     const timer = setTimeout(() => setError(null), 5500);
     return () => clearTimeout(timer);
   }, [error]);
+
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timer = setTimeout(() => setStatusMessage(null), 5500);
+    return () => clearTimeout(timer);
+  }, [statusMessage]);
 
   const deriveSeverity = (row: Record<string, unknown>) => {
     const severityRaw =
@@ -1384,13 +1391,7 @@ export default function SpecialistDashboardPage() {
           </div>
         )}
       </div>
-      {/* Global error popup toast - top-right, auto-dismisses after 5.5s */}
-      {error && (
-        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
-          <span>❌</span>
-          <span>{error}</span>
-        </div>
-      )}
+
 
       {viewState === "list" && (
         <>
@@ -1703,7 +1704,11 @@ export default function SpecialistDashboardPage() {
                   loading={templatesLoading}
                   saving={diagnosisSaving}
                   onChange={setDiagnosisForm}
-                  onSave={saveCaseDiagnosis}
+                  onSave={async () => {
+                    const res = await saveCaseDiagnosis();
+                    if (res.success) setStatusMessage("Diagnosis saved successfully!");
+                    return res;
+                  }}
                 />
               </div>
               <div className="col-span-2">
@@ -1713,7 +1718,11 @@ export default function SpecialistDashboardPage() {
                   loading={templateDependentLoading}
                   saving={treatmentSaving}
                   onChange={setTreatmentForm}
-                  onSave={saveTreatmentPlan}
+                  onSave={async () => {
+                    const res = await saveTreatmentPlan();
+                    if (res.success) setStatusMessage("Treatment plan saved successfully!");
+                    return res;
+                  }}
                 />
               </div>
             </div>
@@ -1739,7 +1748,11 @@ export default function SpecialistDashboardPage() {
                   return prev.filter((row) => row.id !== id);
                 })
               }
-              onSave={savePrescription}
+              onSave={async () => {
+                const res = await savePrescription();
+                if (res.success) setStatusMessage("Prescriptions updated successfully!");
+                return res;
+              }}
             />
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1768,7 +1781,11 @@ export default function SpecialistDashboardPage() {
                   onIntervalChange={setFollowupInterval}
                   onDateChange={setFollowupDate}
                   onNotesChange={setFollowupNotes}
-                  onSave={saveFollowup}
+                  onSave={async () => {
+              const res = await saveFollowup();
+              if (res.success) setStatusMessage("Follow-up schedule saved!");
+              return res;
+            }}
                 />
               </div>
             </div>
@@ -1965,7 +1982,7 @@ export default function SpecialistDashboardPage() {
                       diagnosisCompleted: viewingPastCaseData.diagnosis?.created_at ?? null,
                       treatmentGenerated: viewingPastCaseData.treatment?.created_at ?? null,
                       followupScheduled: viewingPastCaseData.followup?.created_at ?? null,
-                      caseFinalized: viewingPastCaseData.case_status === "finalized" ? viewingPastCaseData.specialist_completed_at ?? null : null,
+                      caseFinalized: (viewingPastCaseData.case_status?.toLowerCase() === "finalized" || viewingPastCaseData.specialist_completed_at) ? (viewingPastCaseData.specialist_completed_at || viewingPastCaseData.case_created_at) : null,
                     }}
                   />
                 </div>
@@ -2009,6 +2026,21 @@ export default function SpecialistDashboardPage() {
         }}
       />
       </main>
+
+      {/* Global notifications moved outside transformed main to ensure fixed positioning */}
+      {statusMessage && (
+        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-green-600 shadow-2xl text-white text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          <span>✅</span>
+          <span>{statusMessage}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          <span>❌</span>
+          <span>{error}</span>
+        </div>
+      )}
     </div>
   );
 }

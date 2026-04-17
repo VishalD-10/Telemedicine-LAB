@@ -44,7 +44,6 @@ export default function PrescriptionPanel({
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  const [showToast, setShowToast] = useState(false);
   const currentDiagnosisIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -122,8 +121,6 @@ export default function PrescriptionPanel({
     if (suc) {
       setIsSaved(true);
       setIsDirty(false);
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 5500);
     }
   };
 
@@ -214,11 +211,6 @@ export default function PrescriptionPanel({
         </div>
       </div>
 
-      {showToast && (
-        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-xl bg-green-600 shadow-xl text-white text-sm font-medium transition-all animate-in slide-in-from-top-2 fade-in-0 duration-300">
-          ✅ Prescription saved successfully
-        </div>
-      )}
     </section>
   );
 }

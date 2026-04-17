@@ -1,5 +1,6 @@
-﻿"use client";
+"use client";
 
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -138,8 +139,9 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose, allowA
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Normalize coordinates by zoom factor to keep brush aligned with image pixels
+    const x = (e.clientX - rect.left) / zoom;
+    const y = (e.clientY - rect.top) / zoom;
     const ctx = getCtx();
     if (!ctx) return;
 
@@ -150,6 +152,8 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose, allowA
     if (annotationMode === "eraser") {
       ctx.globalCompositeOperation = "destination-out";
       ctx.beginPath();
+      // Scale brush radius by zoom if needed? 
+      // Actually brushSize is usually absolute image pixels, so we keep it.
       ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
       ctx.fill();
     } else {
@@ -179,7 +183,8 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose, allowA
     for (let i = 0; i < data.length; i += 4) {
       const alpha = data[i + 3];
 
-      if (alpha > 0) {
+      // Alpha threshold > 128 to prevent residual erased pixels from accumulating in mask
+      if (alpha > 128) {
         data[i] = 255;
         data[i + 1] = 255;
         data[i + 2] = 255;
@@ -339,206 +344,256 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose, allowA
     setIsMaskLoaded(false);
   }, [activeTab]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 flex items-center justify-center bg-black/40 backdrop-blur-md z-50"
+      className="fixed inset-0 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm z-[1000]"
       onClick={onClose}
     >
       <div
-        className="relative w-[900px] max-w-[95%] rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200 shadow-2xl p-6 text-slate-900"
+        className="glass-panel relative w-[1000px] max-w-[95%] max-h-[90vh] overflow-hidden flex flex-col p-0 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-2 top-2 px-3 py-1 text-sm bg-red-100 hover:bg-red-200 text-red-700 rounded-md border border-red-200 shadow"
-        >
-          Close
-        </button>
-        {xrayPath && (
-          <div className="mb-2 pt-10 text-sm text-slate-700 space-y-3">
-            <div>File: {xrayPath}</div>
-            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm backdrop-blur-md">
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value)}
-                className="rounded-xl border border-slate-200 px-3 py-2 bg-white shadow-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200 [&>option]:bg-white [&>option]:text-slate-900"
-              >
-                {options.map((option) => (
-                  <option key={option.value} value={option.value} className="bg-white text-slate-900">
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/50 bg-white/20 backdrop-blur-md">
+          <div className="flex flex-col">
+            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              <span className="w-2 h-6 bg-blue-600 rounded-full" />
+              Diagnostic Imaging Viewer
+            </h2>
+            {xrayPath && <span className="text-xs text-slate-500 font-mono mt-0.5">{xrayPath}</span>}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+          <div className="flex flex-wrap items-center gap-4 mb-6">
+            <div className="flex items-center gap-2 bg-slate-100/50 p-1 rounded-xl border border-slate-200/50">
+              {options.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setMode(opt.value)}
+                  className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                    mode === opt.value
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
-        )}
-        <div>
+
           {allowAnnotation && (
-            <div className="flex gap-2 mb-3">
+            <div className="flex gap-2 mb-6 p-1 bg-slate-100/50 rounded-xl border border-slate-200/50 w-fit">
               <button
                 type="button"
                 onClick={() => setActiveTab("view")}
-                className={`px-3 py-1 border rounded transition ${
+                className={`px-6 py-2 text-sm font-medium rounded-lg transition-all ${
                   activeTab === "view"
-                    ? "bg-blue-600 text-white border-blue-500 shadow-sm"
-                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
-                View
+                Inspection View
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab("annotation")}
-                className={`px-3 py-1 border rounded transition ${
+                className={`px-6 py-2 text-sm font-medium rounded-lg transition-all ${
                   activeTab === "annotation"
-                    ? "bg-blue-600 text-white border-blue-500 shadow-sm"
-                    : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
-                Annotation
+                Annotation Tool
               </button>
             </div>
           )}
 
           {(!allowAnnotation || activeTab === "view") && (
-          <div className="flex h-[70vh] w-[70vw] max-w-full flex-col">
-            <div className="relative w-full h-[500px] bg-slate-100 rounded-lg overflow-auto border border-slate-200">
-              <div
-                style={{
-                  transform: `scale(${zoom})`,
-                  transformOrigin: "center center",
-                  width: "fit-content",
-                  margin: "auto"
-                }}
-              >
-                <div className="relative flex items-center justify-center w-full h-[60vh] bg-white rounded-xl overflow-hidden">
+            <div className="flex flex-col gap-6">
+              <div className="relative group aspect-[4/3] bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+                <div
+                  className="w-full h-full flex items-center justify-center transition-transform duration-300 ease-out cursor-move"
+                  style={{
+                    transform: `scale(${zoom})`,
+                  }}
+                >
                   {image ? (
                     <img
                       ref={imageRef}
                       src={image}
                       alt="DICOM X-ray"
-                      className="max-w-full max-h-full object-contain transition-all duration-200"
+                      className="max-w-full max-h-full object-contain"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-white">
-                      {loading ? <div className="animate-pulse bg-slate-200 rounded-xl h-full w-full" /> : <div className="h-full w-full bg-white" />}
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
+                      <span className="text-slate-500 text-sm">Processing DICOM data...</span>
                     </div>
                   )}
-                  {loading && image && (
-                    <div className="absolute inset-0 pointer-events-none p-3">
-                      <div className="animate-pulse bg-slate-200/35 rounded-xl h-full w-full" />
-                    </div>
-                  )}
+                </div>
+
+                {/* Floating Controls */}
+                <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <button
                     type="button"
                     onClick={() => imageRef.current?.requestFullscreen?.()}
-                    className="absolute right-2 top-2 px-3 py-1 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md shadow"
+                    className="p-3 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-xl hover:bg-white/20 transition-all shadow-lg"
+                    title="Fullscreen"
                   >
-                    Fullscreen
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-900/80 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-2xl text-white shadow-2xl">
+                  <div className="flex items-center gap-3">
+                    <button 
+                      type="button" 
+                      onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}
+                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                      </svg>
+                    </button>
+                    <span className="text-xs font-bold tabular-nums w-12 text-center">
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button 
+                      type="button" 
+                      onClick={() => setZoom((z) => Math.min(4, z + 0.2))}
+                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="w-px h-4 bg-white/20" />
+                  <button 
+                    type="button" 
+                    onClick={() => setZoom(1)}
+                    className="text-[10px] font-bold uppercase tracking-widest hover:text-blue-400 transition-colors"
+                  >
+                    Reset
                   </button>
                 </div>
               </div>
-              <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-white/90 text-slate-700 px-3 py-1 rounded-md border border-slate-200 shadow-sm">
-                <button type="button" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))}>
-                  −
-                </button>
-                <span>{Math.round(zoom * 100)}%</span>
-                <button type="button" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}>
-                  +
-                </button>
-                <button type="button" onClick={() => setZoom(1)}>
-                  Reset
-                </button>
-              </div>
-            </div>
-            <div className="h-[25%] overflow-y-auto mt-4 pt-3 border-t border-slate-200">
-              {metadata ? (
-                <table className="w-full text-xs text-slate-700">
-                  <tbody>
+
+              {/* Metadata area */}
+              <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200/60">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">DICOM Metadata Attributes</h4>
+                {metadata ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                     {[
-                      ["PatientID", metadata?.PatientID ?? null],
+                      ["Patient ID", metadata?.PatientID ?? null],
                       ["Modality", metadata?.Modality ?? null],
-                      ["StudyDate", metadata?.StudyDate ?? null],
+                      ["Study Date", metadata?.StudyDate ?? null],
                       [
-                        "Rows × Columns",
+                        "Resolution",
                         metadata?.Rows != null || metadata?.Columns != null
                           ? `${metadata?.Rows ?? "—"} × ${metadata?.Columns ?? "—"}`
                           : null,
                       ],
-                      ["PixelSpacing", metadata?.PixelSpacing ?? null],
-                      ["BitsStored", metadata?.BitsStored ?? null],
+                      ["Pixel Spacing", metadata?.PixelSpacing ?? null],
                       ["Manufacturer", metadata?.Manufacturer ?? null],
                     ].map(([label, value]) => (
-                      <tr key={label} className="border-b border-slate-200 last:border-b-0">
-                        <td className="py-1 pr-3 font-medium text-slate-900">{label}</td>
-                        <td className="py-1 text-slate-700">{value ?? "—"}</td>
-                      </tr>
+                      <div key={label} className="space-y-1">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{label}</span>
+                        <p className="text-sm font-medium text-slate-700 truncate">{value ?? "—"}</p>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <p className="text-slate-600 text-sm">Metadata unavailable for this image.</p>
-                </div>
-              )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 text-slate-400">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-sm">Extended DICOM metadata attributes are unavailable for this image.</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
           )}
 
           {allowAnnotation && activeTab === "annotation" && (
-            <div className="border rounded-lg bg-white p-2 border-slate-200">
-              <div className="flex items-center justify-between mb-3 px-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAnnotationMode("brush")}
-                    className={`px-3 py-1.5 rounded-md text-sm border ${
-                      annotationMode === "brush" ? "bg-blue-600 text-white border-blue-500" : "bg-white text-slate-700 border-slate-200"
-                    }`}
-                  >
-                    Brush
-                  </button>
+            <div className="flex flex-col gap-6">
+              <div className="glass-panel p-4 flex items-center justify-between bg-white/40">
+                <div className="flex items-center gap-3">
+                  <div className="flex p-1 bg-slate-200/50 rounded-xl gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setAnnotationMode("brush")}
+                      className={`p-2 rounded-lg transition-all ${
+                        annotationMode === "brush" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                      }`}
+                      title="Brush Tool"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setAnnotationMode("eraser")}
-                    className={`px-3 py-1.5 rounded-md text-sm border ${
-                      annotationMode === "eraser" ? "bg-blue-600 text-white border-blue-500" : "bg-white text-slate-700 border-slate-200"
-                    }`}
-                  >
-                    Eraser
-                  </button>
-
-                  <div className="flex items-center gap-2 ml-2">
-                    <span className="text-xs text-slate-600">Size</span>
-                    <input
-                      type="range"
-                      min={5}
-                      max={60}
-                      value={brushSize}
-                      onChange={(e) => setBrushSize(Number(e.target.value))}
-                      className="w-24"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setAnnotationMode("eraser")}
+                      className={`p-2 rounded-lg transition-all ${
+                        annotationMode === "eraser" ? "bg-white text-red-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                      }`}
+                      title="Eraser Tool"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
 
-                  <input
-                    type="color"
-                    onChange={(e) => setColor(e.target.value)}
-                    className="ml-2 w-8 h-8 border rounded border-slate-200 bg-white"
-                  />
+                  <div className="flex items-center gap-4 ml-4">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Brush Size</span>
+                      <input
+                        type="range"
+                        min={5}
+                        max={80}
+                        value={brushSize}
+                        onChange={(e) => setBrushSize(Number(e.target.value))}
+                        className="w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                    </div>
+                    <div className="w-px h-8 bg-slate-200" />
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Color</span>
+                      <input
+                        type="color"
+                        value={color.startsWith("#") ? color : "#ef4444"}
+                        onChange={(e) => setColor(e.target.value)}
+                        className="w-8 h-8 rounded-lg overflow-hidden border-0 p-0 cursor-pointer"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={() => {
                       const canvas = canvasRef.current;
                       const ctx = canvas?.getContext("2d");
-
                       if (!canvas || !ctx) return;
 
                       if (isMaskLoaded && originalImageData) {
@@ -553,47 +608,48 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose, allowA
                         generateMask();
                       }
                     }}
-                    className="px-3 py-1.5 text-sm rounded-md border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 active:bg-slate-100"
+                    className={`glass-btn-secondary py-2 !rounded-lg !px-4 ${isMaskGenerated ? "!text-blue-600 !border-blue-200 !bg-blue-50" : ""}`}
                   >
-                    {isMaskGenerated ? "Edit Mask" : "Generate"}
+                    {isMaskGenerated ? "Adjust Regions" : "Process Mask"}
                   </button>
 
-                  <button onClick={uploadMask} className="px-3 py-1.5 text-sm rounded-md border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 active:bg-slate-100">
-                    Save
+                  <button onClick={uploadMask} className="glass-btn-primary py-2 !rounded-lg !px-6">
+                    Save Analysis
                   </button>
 
-                  <button onClick={loadMask} className="px-3 py-1.5 text-sm rounded-md border border-slate-200 bg-white text-slate-800 hover:bg-slate-50 active:bg-slate-100">
-                    {isMaskLoaded ? "Unload" : "Load"}
+                  <button 
+                    onClick={loadMask} 
+                    className={`glass-btn-secondary py-2 !rounded-lg !px-4 ${isMaskLoaded ? "!text-emerald-600 !border-emerald-200 !bg-emerald-50" : ""}`}
+                  >
+                    {isMaskLoaded ? "Hide Mask" : "Load Existing"}
                   </button>
                 </div>
               </div>
 
-              <div className="relative w-full h-[500px] bg-slate-100 rounded-lg overflow-auto border border-slate-200">
+              <div className="relative group aspect-[4/3] bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
                 <div
+                  className="w-full h-full flex items-center justify-center transition-transform duration-300 ease-out"
                   style={{
                     transform: `scale(${zoom})`,
-                    transformOrigin: "center center",
-                    width: "fit-content",
-                    margin: "auto"
                   }}
                 >
-                  <div className="relative">
+                  <div className="relative inline-block">
                     {image ? (
                       <img
                         ref={imageRef}
                         src={image}
                         alt="DICOM X-ray"
-                        className="max-w-full max-h-full object-contain transition-all duration-200"
+                        className="max-w-full max-h-full object-contain select-none"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-white">
-                        {loading ? <div className="animate-pulse bg-slate-200 rounded-xl h-full w-full" /> : <div className="h-full w-full bg-white" />}
+                      <div className="flex h-full w-full items-center justify-center bg-slate-900">
+                        <div className="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
                       </div>
                     )}
 
                     <canvas
                       ref={canvasRef}
-                      className="absolute top-0 left-0 pointer-events-auto"
+                      className="absolute top-0 left-0 cursor-crosshair touch-none"
                       onMouseDown={startDraw}
                       onMouseUp={endDraw}
                       onMouseMove={draw}
@@ -601,17 +657,32 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose, allowA
                     />
                   </div>
                 </div>
-                <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-white/90 text-slate-700 px-3 py-1 rounded-md border border-slate-200 shadow-sm">
-                  <button type="button" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))}>
-                    −
-                  </button>
-                  <span>{Math.round(zoom * 100)}%</span>
-                  <button type="button" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}>
-                    +
-                  </button>
-                  <button type="button" onClick={() => setZoom(1)}>
-                    Reset
-                  </button>
+                
+                {/* Floatings for Annotation */}
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-900/80 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-2xl text-white shadow-2xl">
+                  <div className="flex items-center gap-3">
+                    <button 
+                      type="button" 
+                      onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}
+                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                      </svg>
+                    </button>
+                    <span className="text-xs font-bold tabular-nums w-12 text-center">
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button 
+                      type="button" 
+                      onClick={() => setZoom((z) => Math.min(4, z + 0.2))}
+                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -620,5 +691,7 @@ export default function DicomViewer({ isOpen, xrayUrl, xrayPath, onClose, allowA
         </div>
       </div>
     </div>
+    ,
+    document.body
   );
 }

@@ -36,7 +36,6 @@ export default function FollowupPanel({
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  const [showToast, setShowToast] = useState(false);
   const currentDiagnosisIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -119,8 +118,6 @@ export default function FollowupPanel({
             if (suc) {
               setIsSaved(true);
               setIsDirty(false);
-              setShowToast(true);
-              setTimeout(() => setShowToast(false), 5500);
             }
           }}
           disabled={isSaving || Boolean(saving) || (isSaved && !isDirty)}
@@ -139,11 +136,6 @@ export default function FollowupPanel({
         ) : null}
       </div>
 
-      {showToast && (
-        <div className="fixed top-6 right-6 z-50 px-5 py-3 rounded-xl bg-green-600 shadow-xl text-white text-sm font-medium transition-all animate-in slide-in-from-top-2 fade-in-0 duration-300">
-          ✅ Follow-up saved successfully
-        </div>
-      )}
     </section>
   );
 }

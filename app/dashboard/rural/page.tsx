@@ -1837,7 +1837,7 @@ export default function RuralDashboardPage() {
                       diagnosisCompleted: caseDetail.diagnosis?.created_at ?? null,
                       treatmentGenerated: caseDetail.treatment?.created_at ?? null,
                       followupScheduled: caseDetail.followup?.created_at ?? null,
-                      caseFinalized: caseDetail.case_status === "finalized" ? caseDetail.specialist_completed_at ?? null : null,
+                      caseFinalized: (caseDetail.case_status?.toLowerCase() === "finalized" || caseDetail.specialist_completed_at) ? (caseDetail.specialist_completed_at || caseDetail.case_created_at) : null,
                     }}
                   />
                 </div>
@@ -1852,21 +1852,9 @@ export default function RuralDashboardPage() {
         ) : null
       ) : null}
 
-      {/* Global success popup toast */}
-      {statusMessage && (
-        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-green-600 shadow-2xl text-white text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
-          <span>✅</span>
-          <span>{statusMessage}</span>
-        </div>
-      )}
 
-      {/* Global error popup toast */}
-      {errorMessage && (
-        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
-          <span>❌</span>
-          <span>{errorMessage}</span>
-        </div>
-      )}
+
+
 
       {view === "new_case" && (
         <div className="grid grid-cols-1 gap-6 max-w-6xl mx-auto p-4 md:p-8 animate-in slide-in-from-bottom-4 duration-700">
@@ -2325,6 +2313,22 @@ export default function RuralDashboardPage() {
         </div>
       )}
       </main>
+
+      {/* Global success popup toast - Moved outside transformed main to stay fixed */}
+      {statusMessage && (
+        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-green-600 shadow-2xl text-white text-sm font-medium flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          <span>✅</span>
+          <span>{statusMessage}</span>
+        </div>
+      )}
+
+      {/* Global error popup toast - Moved outside transformed main to stay fixed */}
+      {errorMessage && (
+        <div className="fixed top-6 right-6 z-[100] max-w-sm px-5 py-3 rounded-xl bg-red-600 text-white text-sm font-medium shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-2 fade-in-0 duration-300">
+          <span>❌</span>
+          <span>{errorMessage}</span>
+        </div>
+      )}
 
       {showSpecialistModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-300">
